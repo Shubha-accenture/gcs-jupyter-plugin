@@ -1,0 +1,7 @@
+{
+  "ServerApp": {
+    "jpserver_extensions": {
+      "gcs_jupyter_plugin": true
+    }
+  }
+}
