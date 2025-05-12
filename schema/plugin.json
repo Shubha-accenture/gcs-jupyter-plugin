@@ -1,0 +1,8 @@
+{
+  "jupyter.lab.shortcuts": [],
+  "title": "gcs-jupyter-plugin",
+  "description": "gcs-jupyter-plugin settings.",
+  "type": "object",
+  "properties": {},
+  "additionalProperties": false
+}
