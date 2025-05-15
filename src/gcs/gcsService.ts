@@ -62,4 +62,39 @@ export class GcsService {
     return data;
   }
 
+
+  /**
+   * Thin wrapper around storage.object.list
+   * @see https://cloud.google.com/storage/docs/listing-objects
+   */
+  static async listFiles({ prefix, bucket }: { prefix: string; bucket: string }) {
+    const credentials = await authApi();
+    if (!credentials) {
+      throw 'not logged in';
+    }
+    const data = (await requestAPI(
+      `api/storage/listFiles?prefix=${prefix}&bucket=${bucket}`
+    )) as any;
+    return data;
+  }
+
+  /**
+   * Thin wrapper around storage.object.download-into-memory
+   * @see https://cloud.google.com/storage/docs/downloading-objects-into-memory
+   */
+  static async loadFile({bucket, path, format }: {
+    bucket: string; path: string; format: 'text' | 'json' | 'base64';
+    }
+  ): Promise<string> {
+
+    const credentials = await authApi();
+    if (!credentials) {
+      throw 'not logged in';
+    }
+    const data = (await requestAPI(
+      `api/storage/loadFile?bucket=${bucket}&path=${path}&format=${format}`
+    )) as any;
+
+    return data;
+  }
 }

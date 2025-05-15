@@ -21,8 +21,16 @@ import 'react-toastify/dist/ReactToastify.css';
 import { LabIcon } from '@jupyterlab/ui-components';
 import gcsNewFolderIcon from '../../style/icons/gcs_folder_new_icon.svg';
 import gcsUploadIcon from '../../style/icons/gcs_upload_icon.svg';
+import { GcsService } from './gcsService';
 import { GCSDrive } from './gcsDrive';
 import { TitleWidget } from '../controls/SidePanelTitleWidget';
+
+import { toast } from 'react-toastify';
+import 'react-toastify/dist/ReactToastify.css';
+
+import {
+  toastifyCustomStyle,
+} from '../utils/utils';
 
 const iconGCSNewFolder = new LabIcon({
   name: 'gcs-toolbar:gcs-folder-new-icon',
@@ -46,18 +54,6 @@ export class GcsBrowserWidget extends Widget {
   private browser: FileBrowser;
   private fileInput: HTMLInputElement;
 
-  private handleFolderCreation = () => {
-    if (this.browser.model.path.split(':')[1] !== '') {
-      this.browser.createNewDirectory();
-    } else {
-      showDialog({
-        title: 'Create Bucket Error',
-        body: 'Please use console to create new bucket',
-        buttons: [Dialog.okButton()]
-      });
-    }
-  };
-
   // Function to trigger file input dialog when the upload button is clicked
   private onUploadButtonClick = () => {
     if (this.browser.model.path.split(':')[1] !== '') {
@@ -65,7 +61,19 @@ export class GcsBrowserWidget extends Widget {
     } else {
       showDialog({
         title: 'Upload Error',
-        body: 'Uploading files at bucket level is not allowed',
+        body: 'Uploading files at bucket level is not allowed.',
+        buttons: [Dialog.okButton()]
+      });
+    }
+  };
+
+  private handleFolderCreation = () => {
+    if (this.browser.model.path.split(':')[1] !== '') {
+      this.browser.createNewDirectory();
+    } else {
+      showDialog({
+        title: 'Create Bucket Error',
+        body: 'Please use Google Cloud Console to create new bucket.',
         buttons: [Dialog.okButton()]
       });
     }
@@ -83,7 +91,7 @@ export class GcsBrowserWidget extends Widget {
       body: 'Uploading not implemented yet',
       buttons: [Dialog.okButton()]
     });
-    
+
   };
 
   private filterFilesByName = async (filterValue: string) => {
