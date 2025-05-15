@@ -100,3 +100,95 @@ class SaveFileController(APIHandler):
             self.log.exception("Error saving content")
             self.set_status(500)
             self.finish(json.dumps({"error": str(e)}))
+    
+    class DeleteFileController(APIHandler):
+    @tornado.web.authenticated
+    async def post(self):
+        try:
+            data = json.loads(self.request.body)
+            bucket = data.get("bucket")
+            path = data.get("path")
+
+            if not bucket:
+                self.finish(
+                    {
+                        "error": "Missing required parameters.",
+                        "status": 400,
+                    }
+                )
+                return
+
+            async with aiohttp.ClientSession() as client_session:
+                client = gcs.Client(
+                    await credentials.get_cached(), self.log, client_session
+                )
+
+                result = await client.delete_file(bucket, path)
+
+                # Check for specific error conditions in the result
+                if "error" in result:
+                    self.finish(
+                        {
+                            "error": result.get("error"),
+                            "status": result.get("status"),
+                        }
+                    )
+                    return
+
+                # Set correct success status for delete operation
+                self.finish({
+                    "message" : "File / Folder Successfully deleted",
+                    "status" : 200,
+                })
+        except Exception as e:
+            self.log.exception("Error deleting file")
+            self.set_status(500)
+            self.finish({"error": str(e)})
+
+
+class RenameFileController(APIHandler):
+    @tornado.web.authenticated
+    async def post(self):
+        try:
+            data = json.loads(self.request.body)
+            old_bucket = data.get("oldBucket")
+            old_path = data.get("oldPath")
+            new_bucket = data.get("newBucket")
+            new_path = data.get("newPath")
+
+            if not old_bucket or not old_path or not new_bucket or not new_path:
+                self.set_status(400)
+                self.finish(json.dumps({"error": "Missing required parameters."}))
+                return
+
+            # Currently rename_blob only works within the same bucket
+            if old_bucket != new_bucket:
+                self.set_status(400)
+                self.finish(
+                    json.dumps({"error": "Cross-bucket renaming is not supported."})
+                )
+                return
+
+            async with aiohttp.ClientSession() as client_session:
+                client = gcs.Client(
+                    await credentials.get_cached(), self.log, client_session
+                )
+
+                result = await client.rename_file(old_bucket, old_path, new_path)
+
+                # Check for specific error conditions in the result
+                if "error" in result:
+                    self.finish(
+                        {
+                            "error": result.get("error"),
+                            "status": result.get("status"),
+                        }
+                    )
+                    return
+                self.set_status(200)
+                self.finish(json.dumps(result))
+
+        except Exception as e:
+            self.log.exception("Error renaming file")
+            self.set_status(500)
+            self.finish(json.dumps({"error": str(e)}))

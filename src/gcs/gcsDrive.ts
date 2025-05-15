@@ -567,28 +567,180 @@ export class GCSDrive implements Contents.IDrive {
     };
   }
 
+  async delete(path: string): Promise<void> {
+    const localPath = GcsService.pathParser(path);
+    const response = await GcsService.deleteFile({
+      bucket: localPath.bucket,
+      path: localPath.path
+    });
+
+    const name = path.split('/').pop() ?? ""; // Gets the last part of the path
+    const isFile = name.includes('.') && name.lastIndexOf('.') > 0;
+
+    if(response.status === 200 || response.status ===204){
+      if (isFile){
+        toast.success(
+          `File ${name} deleted successfully.`,
+          toastifyCustomStyle
+        );
+      }else{
+        toast.success(
+          `Folder ${name} deleted successfully.`,
+          toastifyCustomStyle
+        );
+      }
+
+      this._fileChanged.emit({
+        type: 'delete',
+        oldValue: { path },
+        newValue: null
+      });
+    }else{
+      await showDialog({
+        title: 'Deletion Error',
+        body: response.error,
+        buttons: [Dialog.okButton()]
+      });
+    }
+  }
+
+  async rename(
+    path: string,
+    newLocalPath: string,
+    options?: Contents.IFetchOptions
+  ): Promise<Contents.IModel> {
+    const oldPath = GcsService.pathParser(path);
+    const newPath = GcsService.pathParser(newLocalPath);
+
+    const oldName = path.split('/').pop() ?? "";
+    const isOldPathMeetsFilename = oldName.includes('.') && oldName.lastIndexOf('.') > 0;
+
+    const newName = newLocalPath.split('/').pop() ?? "";
+    const isNewPathMeetsFilename = newName.includes('.') && newName.lastIndexOf('.') > 0;
+
+
+    if (
+      newLocalPath.split('/')[newLocalPath.split('/').length - 1].length >= 1024
+    ) {
+      await showDialog({
+        title: 'Rename Error',
+        body: 'The maximum object length is 1024 characters.',
+        buttons: [Dialog.okButton()]
+      });
+      return DIRECTORY_IMODEL;
+    }
+    if (
+      (!isOldPathMeetsFilename && oldPath.path === "")
+    ) {
+      await showDialog({
+        title: 'Rename Error',
+        body: 'Renaming Bucket is not allowed.',
+        buttons: [Dialog.okButton()]
+      });
+      return DIRECTORY_IMODEL;
+    }else if(isOldPathMeetsFilename && !isNewPathMeetsFilename){
+      // Old path has file name and New file name given dont have extension
+      await showDialog({
+        title: 'Rename Error',
+        body: 'Invalid New File Name Provided.',
+        buttons: [Dialog.okButton()]
+      });
+      return DIRECTORY_IMODEL;
+    } else {
+      if (oldPath.path.includes('UntitledFolder' + untitledFolderSuffix)) {
+        oldPath.path = oldPath.path + '/';
+        newPath.path = newPath.path + '/';
+        path = path + '/';
+      }
+      const response = await GcsService.renameFile({
+        oldBucket: oldPath.bucket,
+        oldPath: oldPath.path,
+        newBucket: newPath.bucket,
+        newPath: newPath.path
+      });
+
+      if (response.status === 200) {
+        await GcsService.deleteFile({
+          bucket: oldPath.bucket,
+          path: oldPath.path
+        });
+
+        if (isOldPathMeetsFilename){
+          toast.success(
+            `File ${oldName} successfully renamed to ${newName}.`,
+            toastifyCustomStyle
+          );
+          return {
+            type: 'file',
+            path: newLocalPath,
+            name: newLocalPath.split('\\').at(-1) ?? '',
+            format: options?.format ?? 'text',
+            content: '',
+            created: '',
+            writable: true,
+            last_modified: '',
+            mimetype: ''
+          };
+        }else{
+          toast.success(
+            `Folder ${oldName} successfully renamed to ${newName}.`,
+            toastifyCustomStyle
+          );
+          return {
+            type: 'directory',
+            path: newLocalPath + (newLocalPath.endsWith('/') ? newLocalPath : newLocalPath + '/'),
+            name: newName,
+            format: null,
+            created: new Date().toISOString(),
+            writable: true,
+            last_modified: new Date().toISOString(),
+            mimetype: '',
+            content: null
+          };
+        }
+      }else{
+        await showDialog({
+          title: 'Rename Error',
+          body: response.error,
+          buttons: [Dialog.okButton()]
+        });
+        return DIRECTORY_IMODEL;
+      }
+    }
+  }
+
   getDownloadUrl(localPath: string): Promise<string> {
     throw new Error('Method not implemented.');
   }
-  delete(localPath: string): Promise<void> {
-    throw new Error('Method not implemented.');
-  }
-  rename(oldLocalPath: string, newLocalPath: string): Promise<Contents.IModel> {
-    throw new Error('Method not implemented.');
-  }
+
+
   copy(localPath: string, toLocalDir: string): Promise<Contents.IModel> {
     throw new Error('Method not implemented.');
   }
-  createCheckpoint(localPath: string): Promise<Contents.ICheckpointModel> {
-    throw new Error('Method not implemented.');
+
+  // Checkpoint APIs, not currently supported.
+  async createCheckpoint(
+    localPath: string
+  ): Promise<Contents.ICheckpointModel> {
+    return {
+      id: '',
+      last_modified: ''
+    };
   }
-  listCheckpoints(localPath: string): Promise<Contents.ICheckpointModel[]> {
-    throw new Error('Method not implemented.');
+
+  async listCheckpoints(
+    localPath: string
+  ): Promise<Contents.ICheckpointModel[]> {
+    return [];
   }
-  restoreCheckpoint(localPath: string, checkpointID: string): Promise<void> {
-    throw new Error('Method not implemented.');
-  }
-  deleteCheckpoint(localPath: string, checkpointID: string): Promise<void> {
-    throw new Error('Method not implemented.');
-  }
+
+  async restoreCheckpoint(
+    localPath: string,
+    checkpointID: string
+  ): Promise<void> {}
+
+  async deleteCheckpoint(
+    localPath: string,
+    checkpointID: string
+  ): Promise<void> {}
 }
