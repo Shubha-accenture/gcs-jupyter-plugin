@@ -23,7 +23,10 @@ classifiers = [
     "Programming Language :: Python :: 3.13",
 ]
 dependencies = [
-    "jupyter_server>=2.4.0,<3"
+    "jupyter_server>=2.4.0,<3",
+    "google-cloud-jupyter-config>=0.0.10",
+    "aiohttp~=3.9.5",
+    "google-cloud-storage~=2.18.2",
 ]
 dynamic = ["version", "description", "authors", "urls", "keywords"]
 
