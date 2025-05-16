@@ -235,4 +235,33 @@ export class GcsService {
       throw error?.message || 'Error renaming file';
     }
   }
+
+  /**
+   * Thin wrapper around storage.object.download
+   * @see https://cloud.google.com/storage/docs/downloading-objects#rest-download-object
+   */
+  static async downloadFile({
+    bucket,
+    path,
+    name,
+    format
+  }: {
+    bucket: string;
+    path: string;
+    name: string;
+    format: 'text' | 'json' | 'base64';
+  }): Promise<string> {
+
+    const credentials = await authApi();
+    if (!credentials) {
+      throw 'not logged in';
+    }
+
+    const response = (await requestAPI(
+      `api/storage/downloadFile?bucket=${bucket}&path=${path}&name=${name}&format=${format}`
+    )) as any;
+    
+    return response;
+
+  }
 }

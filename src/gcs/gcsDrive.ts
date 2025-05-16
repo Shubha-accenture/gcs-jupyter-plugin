@@ -22,6 +22,7 @@ import { GcsService } from './gcsService';
 import { toast } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
 import { showDialog, Dialog } from '@jupyterlab/apputils';
+import mime from 'mime-types';
 
 import {
   toastifyCustomStyle,
@@ -709,10 +710,44 @@ export class GCSDrive implements Contents.IDrive {
     }
   }
 
-  getDownloadUrl(localPath: string): Promise<string> {
-    throw new Error('Method not implemented.');
+  async getDownloadUrl(
+    localPath: string,
+    options?: Contents.IFetchOptions
+  ): Promise<string> {
+    const path = GcsService.pathParser(localPath);
+    const fileContent = await GcsService.downloadFile({
+      path: path.path,
+      bucket: path.bucket,
+      name: path.name ? path.name : '',
+      format: options?.format ?? 'text'
+    });
+
+    const fileName = localPath.split('/').pop() ?? "";
+
+    // if mime not available, then taking default binary type
+    const mimeType = typeof mime.lookup(fileName) == 'string' ? String(mime.lookup(fileName)) : "application/octet-stream";
+
+    let blobData: BlobPart;
+    if (fileName.endsWith('.ipynb')) {
+      blobData = JSON.stringify(fileContent, null, 2); // Serialize the object to a JSON string (with indentation for readability, optional)
+  } else {
+      blobData = fileContent as BlobPart;
   }
 
+    const blob = new Blob([blobData], { type: mimeType });
+    const url = URL.createObjectURL(blob);
+
+    // Create a temporary anchor element to trigger the download
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = fileName; // Set the desired download filename
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a); // Clean up the temporary element
+    URL.revokeObjectURL(url);
+    
+    return Promise.reject('Download initiated successfully through alternative approach.');
+  }
 
   copy(localPath: string, toLocalDir: string): Promise<Contents.IModel> {
     throw new Error('Method not implemented.');
