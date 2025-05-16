@@ -444,8 +444,7 @@ class Client(tornado.web.RequestHandler):
             self.log.exception(f"Error renaming from {blob_name} to {new_name}.")
             return {"error": str(e), "status": 500}
 
-    
-    async def download_file(self, bucket_name, file_path , name , format):
+    async def download_file(self, bucket_name, file_path, name, format):
         try:
             token = self._access_token
             project = self.project_id
@@ -458,4 +457,4 @@ class Client(tornado.web.RequestHandler):
 
         except Exception as e:
             self.log.exception(f"Error getting file: {e}")
-            return [] #Return Empty File
+            return []  # Return Empty File

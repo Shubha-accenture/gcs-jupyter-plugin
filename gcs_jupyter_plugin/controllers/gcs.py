@@ -25,6 +25,7 @@ class ListBucketsController(APIHandler):
             self.log.exception("Error fetching datasets.")
             self.finish({"error": str(e)})
 
+
 class ListFilesController(APIHandler):
     @tornado.web.authenticated
     async def get(self):
@@ -36,11 +37,12 @@ class ListFilesController(APIHandler):
                     await credentials.get_cached(), self.log, client_session
                 )
 
-                files = await client.list_files(bucket,prefix)
+                files = await client.list_files(bucket, prefix)
             self.finish(json.dumps(files))
         except Exception as e:
             self.log.exception("Error fetching datasets")
             self.finish({"error": str(e)})
+
 
 class CreateFolderController(APIHandler):
     @tornado.web.authenticated
@@ -115,7 +117,7 @@ class LoadFileController(APIHandler):
                     await credentials.get_cached(), self.log, client_session
                 )
 
-                file = await client.get_file(bucket,file_path, format)
+                file = await client.get_file(bucket, file_path, format)
             self.finish(json.dumps(file))
         except Exception as e:
             self.log.exception("Error fetching datasets")
@@ -229,10 +231,12 @@ class DownloadFileController(APIHandler):
                 client = gcs.Client(
                     await credentials.get_cached(), self.log, client_session
                 )
-                file_content = await client.download_file(bucket,file_path, name, format)
+                file_content = await client.download_file(
+                    bucket, file_path, name, format
+                )
 
                 self.finish(file_content)
-                
+
                 # if format == 'text':
                 #     self.set_header('Content-Type', 'text/plain')
                 #     self.set_header('Content-Disposition', f'attachment; filename="{name}"')
@@ -251,7 +255,6 @@ class DownloadFileController(APIHandler):
                 #     self.set_header('Content-Disposition', f'attachment; filename="{name}"')
                 #     self.finish(file_content)
 
-            
         except Exception as e:
             self.log.exception("Error fetching datasets")
             self.finish({"error": str(e)})

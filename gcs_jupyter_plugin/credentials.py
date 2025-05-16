@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import logging
 from google.cloud.jupyter_config.config import (
     async_get_gcloud_config,
     async_run_gcloud_subcommand,
@@ -64,9 +65,9 @@ async def get_cached():
         credentials["access_token"] = await _gcp_credentials()
         credentials["project_number"] = await _gcp_project_number()
     except Exception as ex:
-        credentials["config_error"] = 1
+        logging.exception(f"Error fetching credentials from gcloud: {ex}")
 
-    if not credentials["access_token"] or not credentials["project_number"]:
+    if not credentials["access_token"]:
         # These will only be set if the user is logged in to gcloud with
         # an account that has the appropriate permissions on the configured
         # project.
@@ -74,5 +75,13 @@ async def get_cached():
         # As such, we treat them being missing as a signal that there is
         # a problem with how the user is logged in to gcloud.
         credentials["login_error"] = 1
+    if credentials["access_token"]:
+        if not credentials["project_id"] or not credentials["region_id"]:
+            # These will only be set if the user has configured gcloud with
+            # a project and region.
+            #
+            # As such, we treat them being missing as a signal that there is
+            # a problem with how the user has configured gcloud.
+            credentials["config_error"] = 1
 
     return credentials

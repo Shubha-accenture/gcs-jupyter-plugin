@@ -24,7 +24,8 @@ import gcsUploadIcon from '../../style/icons/gcs_upload_icon.svg';
 import { GcsService } from './gcsService';
 import { GCSDrive } from './gcsDrive';
 import { TitleWidget } from '../controls/SidePanelTitleWidget';
-import { authApi, login } from '../utils/utils';
+import { authApi, login, toastifyCustomStyle } from '../utils/utils';
+import { toast } from 'react-toastify';
 import signinGoogleIcon from '../../style/icons/signin_google_icon.svg';
 
 const iconGCSNewFolder = new LabIcon({
@@ -35,6 +36,7 @@ const iconGCSUpload = new LabIcon({
   name: 'gcs-toolbar:gcs-upload-icon',
   svgstr: gcsUploadIcon
 });
+
 const IconsigninGoogle = new LabIcon({
   name: 'launcher:signin_google_icon',
   svgstr: signinGoogleIcon
@@ -111,30 +113,43 @@ export class GcsBrowserWidget extends Widget {
             bucket: path.bucket
           });
 
-          if (content.items && content.items.length > 0) {
+          if (content.files && content.files.length > 0) {
             const result = await showDialog({
               title: 'Upload files',
               body:
                 file.name +
                 ' already exists in ' +
                 path.bucket +
-                ' Do you want to overwrite the file?',
-              buttons: [Dialog.okButton(), Dialog.cancelButton()]
+                ', Do you want to overwrite the file?',
+              buttons: [
+                Dialog.okButton({ label: 'Overwrite' }),
+                Dialog.cancelButton()
+              ]
             });
 
             if (result.button.accept) {
               await GcsService.saveFile({
                 bucket: path.bucket,
                 path: filePath,
-                contents: reader.result as string // assuming contents is a string
+                contents: reader.result as string, // assuming contents is a string
+                upload: false
               });
+              toast.success(
+                `${file.name} overwritten successfully.`,
+                toastifyCustomStyle
+              );
             }
           } else {
             await GcsService.saveFile({
               bucket: path.bucket,
               path: filePath,
-              contents: reader.result as string // assuming contents is a string
+              contents: reader.result as string, // assuming contents is a string
+              upload: true
             });
+            toast.success(
+              `${file.name} uploaded successfully.`,
+              toastifyCustomStyle
+            );
           }
 
           // Optionally, update the FileBrowser model to reflect the newly uploaded file
@@ -152,40 +167,68 @@ export class GcsBrowserWidget extends Widget {
     this.browser.model.refresh();
   };
 
-  constructor(
-    drive: GCSDrive,
-    fileBrowserFactory: IFileBrowserFactory
-  ) {
+  constructor(drive: GCSDrive, fileBrowserFactory: IFileBrowserFactory) {
     super();
     this.drive = drive;
     this.fileBrowserFactory = fileBrowserFactory;
-    
+
     // Create an empty panel layout initially
     this.layout = new PanelLayout();
     this.node.style.height = '100%';
     this.node.style.display = 'flex';
     this.node.style.flexDirection = 'column';
-    
+
     // Add title widget initially
     (this.layout as PanelLayout).addWidget(
       new TitleWidget('Google Cloud Storage', true)
     );
-    
+
     // Check configuration and initialize appropriately
     this.initialize();
   }
 
+  // private async initialize(): Promise<void> {
+  //   try {
+  //     const credentials = await authApi();
+
+  //     if (credentials) {
+  //       if (credentials.config_error === 1) {
+  //         // Config error, leave the panel empty (only with title)
+  //         console.log('Configuration error detected');
+  //         return;
+  //       }
+
+  //       if (credentials.login_error === 1) {
+  //         // Login error, leave the panel empty (only with title)
+  //         console.log('Login error detected');
+  //         return;
+  //       }
+
+  //       // No errors, proceed with browser widget initialization
+  //       if (credentials.login_error !== 1 && credentials.config_error !== 1) {
+  //         this.setupBrowserWidget();
+  //       }
+  //     }
+  //   } catch (error) {
+  //     console.error('Error during initialization:', error);
+  //   }
+  // }
 
   private async initialize(): Promise<void> {
     try {
       const credentials = await authApi();
-  
-      // Create a container for error messages
       const errorMessageNode = document.createElement('div');
       errorMessageNode.className = 'gcs-error-message';
       errorMessageNode.style.textAlign = 'center';
       errorMessageNode.style.marginTop = '20px';
-  
+      errorMessageNode.style.alignItems = 'center';
+      errorMessageNode.style.justifyContent = 'center';
+      errorMessageNode.style.display = 'flex';
+      errorMessageNode.style.flexDirection = 'column';
+      errorMessageNode.style.fontSize = '15px';
+      errorMessageNode.style.fontWeight = '600';
+      errorMessageNode.style.padding = '11px';
+
       if (credentials) {
         if (credentials.config_error === 1) {
           // Config error
@@ -194,7 +237,7 @@ export class GcsBrowserWidget extends Widget {
           this.node.appendChild(errorMessageNode);
           return;
         }
-  
+
         if (credentials.login_error === 1) {
           // Login error
           const loginContainer = document.createElement('div');
@@ -202,16 +245,20 @@ export class GcsBrowserWidget extends Widget {
           loginContainer.style.flexDirection = 'column';
           loginContainer.style.alignItems = 'center';
           loginContainer.style.marginTop = '20px';
-  
+          loginContainer.style.justifyContent = 'center';
+          loginContainer.style.fontSize = '15px';
+          loginContainer.style.fontWeight = '600';
+          loginContainer.style.padding = '11px';
+
           const loginText = document.createElement('div');
           loginText.className = 'login-error';
           loginText.textContent = 'Please login to continue';
-  
+
           const loginButton = document.createElement('div');
           loginButton.className = 'signin-google-icon logo-alignment-style';
           loginButton.setAttribute('role', 'button');
           loginButton.style.cursor = 'pointer';
-  
+
           loginButton.onclick = () => {
             // Assuming `login` is globally available
             login((value: boolean | ((prevState: boolean) => boolean)) => {
@@ -221,48 +268,36 @@ export class GcsBrowserWidget extends Widget {
               }
             });
           };
-  
-          // Assuming IconsigninGoogle is imported and used in a React app context,
-          // here we simulate a similar icon for plain HTML:
-          const googleIcon = document.createElement('img');
-          googleIcon.src = IconsigninGoogle.svgstr;
-          googleIcon.className = 'signin-google-icon';
-          googleIcon.alt = 'Sign in with Google';
-          googleIcon.style.width = '40px';
-          googleIcon.style.height = '40px';
-  
-          loginButton.appendChild(googleIcon);
+
+          const googleIconContainer = document.createElement('div');
+          googleIconContainer.style.marginTop = '20px';
+          googleIconContainer.innerHTML = IconsigninGoogle.svgstr;
+          loginButton.appendChild(googleIconContainer);
           loginContainer.appendChild(loginText);
           loginContainer.appendChild(loginButton);
           this.node.appendChild(loginContainer);
           return;
         }
-  
-        // No errors, proceed
         this.setupBrowserWidget();
       }
     } catch (error) {
       console.error('Error during initialization:', error);
     }
   }
-  
-  
+
   private setupBrowserWidget(): void {
-    // Create the browser widget
     this.browser = this.fileBrowserFactory.createFileBrowser(
-      'dataproc-jupyter-plugin:gcsBrowser',
+      'gcs-jupyter-plugin:gcsBrowser',
       {
         driveName: this.drive.name
       }
     );
-    
+
     let filterInput = document.createElement('input');
     filterInput.id = 'filter-buckets-objects';
     filterInput.className = 'filter-search-gcs';
     filterInput.type = 'text';
     filterInput.placeholder = 'Filter by Name';
-
-    // Debounce the filterFilesByName function with a delay of 300 milliseconds
     const debouncedFilter = debounce(this.filterFilesByName, 300);
 
     filterInput.addEventListener('input', event => {

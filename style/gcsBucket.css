@@ -121,3 +121,10 @@
   width: 95%;
 }
 
+.signin-google-icon {
+  align-items: center;
+  display: flex;
+  justify-content: center;
+  cursor: pointer;
+}
+
