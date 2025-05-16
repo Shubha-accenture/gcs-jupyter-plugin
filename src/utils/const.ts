@@ -46,3 +46,4 @@ export const gcpServiceUrls = (async () => {
 
 export const API_HEADER_CONTENT_TYPE = 'application/json';
 export const API_HEADER_BEARER = 'Bearer ';
+export const STATUS_SUCCESS = 'SUCCEEDED';

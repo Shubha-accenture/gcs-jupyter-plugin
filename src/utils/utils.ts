@@ -20,6 +20,7 @@ import { requestAPI } from '../handler';
 import { ToastOptions, toast } from 'react-toastify';
 
 import { DataprocLoggingService } from './loggingService';
+import { STATUS_SUCCESS } from './const';
 // import { showLoginDialog } from './loginPopup';
 
 export const toastifyCustomStyle: ToastOptions<{}> = {
@@ -53,6 +54,24 @@ export const authApi = async (
     }
   } catch (reason) {
     console.error(`Error on GET credentials.\n${reason}`);
+  }
+};
+
+
+export const login = async (
+  setLoginError: React.Dispatch<React.SetStateAction<boolean>>
+) => {
+  const data = await requestAPI('login', {
+    method: 'POST'
+  });
+  if (typeof data === 'object' && data !== null) {
+    const loginStatus = (data as { login: string }).login;
+    if (loginStatus === STATUS_SUCCESS) {
+      setLoginError(false);
+      window.location.reload();
+    } else {
+      setLoginError(true);
+    }
   }
 };
 

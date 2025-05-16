@@ -41,7 +41,6 @@ class ListBucketsController(APIHandler):
             self.finish({"error": str(e)})
 
 
-
 class CreateFolderController(APIHandler):
     @tornado.web.authenticated
     async def post(self):
@@ -68,6 +67,7 @@ class CreateFolderController(APIHandler):
             self.set_status(500)
             self.finish({"error": str(e)})
 
+
 class SaveFileController(APIHandler):
     @tornado.web.authenticated
     async def post(self):
@@ -86,7 +86,7 @@ class SaveFileController(APIHandler):
             # Use the client to upload the content
             storage_client = gcs.Client(await credentials.get_cached(), self.log, None)
             result = await storage_client.save_content(
-                bucket, destination_path, content, uploadFlag 
+                bucket, destination_path, content, uploadFlag
             )
 
             if isinstance(result, dict) and "error" in result:
@@ -100,8 +100,9 @@ class SaveFileController(APIHandler):
             self.log.exception("Error saving content")
             self.set_status(500)
             self.finish(json.dumps({"error": str(e)}))
-    
-    class DeleteFileController(APIHandler):
+
+
+class DeleteFileController(APIHandler):
     @tornado.web.authenticated
     async def post(self):
         try:
@@ -136,10 +137,12 @@ class SaveFileController(APIHandler):
                     return
 
                 # Set correct success status for delete operation
-                self.finish({
-                    "message" : "File / Folder Successfully deleted",
-                    "status" : 200,
-                })
+                self.finish(
+                    {
+                        "message": "File / Folder Successfully deleted",
+                        "status": 200,
+                    }
+                )
         except Exception as e:
             self.log.exception("Error deleting file")
             self.set_status(500)
