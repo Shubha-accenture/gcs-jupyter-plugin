@@ -25,6 +25,7 @@ import { GcsService } from './gcsService';
 import { GCSDrive } from './gcsDrive';
 import { TitleWidget } from '../controls/SidePanelTitleWidget';
 import { authApi, login } from '../utils/utils';
+import signinGoogleIcon from '../../style/icons/signin_google_icon.svg';
 
 const iconGCSNewFolder = new LabIcon({
   name: 'gcs-toolbar:gcs-folder-new-icon',
@@ -33,6 +34,10 @@ const iconGCSNewFolder = new LabIcon({
 const iconGCSUpload = new LabIcon({
   name: 'gcs-toolbar:gcs-upload-icon',
   svgstr: gcsUploadIcon
+});
+const IconsigninGoogle = new LabIcon({
+  name: 'launcher:signin_google_icon',
+  svgstr: signinGoogleIcon
 });
 
 const debounce = (func: any, delay: number) => {
@@ -170,32 +175,6 @@ export class GcsBrowserWidget extends Widget {
     this.initialize();
   }
 
-  // private async initialize(): Promise<void> {
-  //   try {
-  //     const credentials = await authApi();
-      
-  //     if (credentials) {
-  //       if (credentials.config_error === 1) {
-  //         // Config error, leave the panel empty (only with title)
-  //         console.log('Configuration error detected');
-  //         return;
-  //       }
-        
-  //       if (credentials.login_error === 1) {
-  //         // Login error, leave the panel empty (only with title)
-  //         console.log('Login error detected');
-  //         return;
-  //       }
-        
-  //       // No errors, proceed with browser widget initialization
-  //       if (credentials.login_error !== 1 && credentials.config_error !== 1) {
-  //         this.setupBrowserWidget();
-  //       }
-  //     }
-  //   } catch (error) {
-  //     console.error('Error during initialization:', error);
-  //   }
-  // }
 
   private async initialize(): Promise<void> {
     try {
@@ -246,7 +225,8 @@ export class GcsBrowserWidget extends Widget {
           // Assuming IconsigninGoogle is imported and used in a React app context,
           // here we simulate a similar icon for plain HTML:
           const googleIcon = document.createElement('img');
-          googleIcon.src = 'https://developers.google.com/identity/images/g-logo.png'; // use actual Google icon
+          googleIcon.src = IconsigninGoogle.svgstr;
+          googleIcon.className = 'signin-google-icon';
           googleIcon.alt = 'Sign in with Google';
           googleIcon.style.width = '40px';
           googleIcon.style.height = '40px';
