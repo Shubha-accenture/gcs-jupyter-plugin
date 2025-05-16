@@ -21,16 +21,8 @@ import 'react-toastify/dist/ReactToastify.css';
 import { LabIcon } from '@jupyterlab/ui-components';
 import gcsNewFolderIcon from '../../style/icons/gcs_folder_new_icon.svg';
 import gcsUploadIcon from '../../style/icons/gcs_upload_icon.svg';
-import { GcsService } from './gcsService';
 import { GCSDrive } from './gcsDrive';
 import { TitleWidget } from '../controls/SidePanelTitleWidget';
-
-import { toast } from 'react-toastify';
-import 'react-toastify/dist/ReactToastify.css';
-
-import {
-  toastifyCustomStyle,
-} from '../utils/utils';
 
 const iconGCSNewFolder = new LabIcon({
   name: 'gcs-toolbar:gcs-folder-new-icon',
@@ -54,6 +46,18 @@ export class GcsBrowserWidget extends Widget {
   private browser: FileBrowser;
   private fileInput: HTMLInputElement;
 
+  private handleFolderCreation = () => {
+    if (this.browser.model.path.split(':')[1] !== '') {
+      this.browser.createNewDirectory();
+    } else {
+      showDialog({
+        title: 'Create Bucket Error',
+        body: 'Please use console to create new bucket',
+        buttons: [Dialog.okButton()]
+      });
+    }
+  };
+
   // Function to trigger file input dialog when the upload button is clicked
   private onUploadButtonClick = () => {
     if (this.browser.model.path.split(':')[1] !== '') {
@@ -61,19 +65,7 @@ export class GcsBrowserWidget extends Widget {
     } else {
       showDialog({
         title: 'Upload Error',
-        body: 'Files cannot be uploaded outside of a bucket.',
-        buttons: [Dialog.okButton()]
-      });
-    }
-  };
-
-  private handleFolderCreation = () => {
-    if (this.browser.model.path.split(':')[1] !== '') {
-      this.browser.createNewDirectory();
-    } else {
-      showDialog({
-        title: 'Create Bucket Error',
-        body: 'Folders cannot be created outside of a bucket.',
+        body: 'Uploading files at bucket level is not allowed',
         buttons: [Dialog.okButton()]
       });
     }
@@ -82,78 +74,16 @@ export class GcsBrowserWidget extends Widget {
   // Function to handle file upload
   private handleFileUpload = async (event: Event) => {
     const input = event.target as HTMLInputElement;
-    const files = Array.from(input.files || []);
 
     // Clear the input element's value to force the 'change' event on subsequent selections
     input.value = '';
 
-    if (files && files.length > 0) {
-      files.forEach((fileData: any) => {
-        const file = fileData;
-        const reader = new FileReader();
-
-        reader.onloadend = async () => {
-          // Upload the file content to Google Cloud Storage
-          const gcsPath = this.browser.model.path.split(':')[1];
-          const path = GcsService.pathParser(gcsPath);
-          let filePath;
-
-          if (path.path === '') {
-            filePath = file.name;
-          } else {
-            filePath = path.path + '/' + file.name;
-          }
-
-          const content = await GcsService.listFiles({
-            prefix: filePath,
-            bucket: path.bucket
-          });
-
-          if (content.files && content.files.length > 0) {
-            const result = await showDialog({
-              title: 'Upload files',
-              body:
-                file.name +
-                ' already exists' +
-                ', Do you want to overwrite?',
-              buttons: [Dialog.cancelButton(), Dialog.okButton({ label: 'Overwrite' })]
-            });
-
-            if (result.button.accept) {
-              await GcsService.saveFile({
-                bucket: path.bucket,
-                path: filePath,
-                contents: reader.result as string, // assuming contents is a string
-                upload: false,
-              });
-              toast.success(
-                `${file.name} overwritten successfully.`,
-                toastifyCustomStyle
-              );
-            }
-          } else {
-            await GcsService.saveFile({
-              bucket: path.bucket,
-              path: filePath,
-              contents: reader.result as string, // assuming contents is a string
-              upload: true,
-            });
-            toast.success(
-              `${file.name} uploaded successfully.`,
-              toastifyCustomStyle
-            );
-          }
-
-          // Optionally, update the FileBrowser model to reflect the newly uploaded file
-          // Example: Refresh the current directory
-          await this.browser.model.refresh();
-        };
-
-        // Read the file as text
-        reader.readAsText(file);
-      });
-    }
-
+    showDialog({
+      title: 'Upload Error',
+      body: 'Uploading not implemented yet',
+      buttons: [Dialog.okButton()]
+    });
+    
   };
 
   private filterFilesByName = async (filterValue: string) => {
