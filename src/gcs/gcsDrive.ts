@@ -259,7 +259,7 @@ export class GCSDrive implements Contents.IDrive {
         console.error("Creating Folders at bucket level is not allowed. Note : Please use console to create new bucket :", options);
         await showDialog({
           title: 'Create Bucket Error',
-          body: 'Please use Google Cloud Console to create new bucket.',
+          body: 'Folders cannot be created outside of a bucket.',
           buttons: [Dialog.okButton()]
         });
         return DIRECTORY_IMODEL;
@@ -268,7 +268,7 @@ export class GCSDrive implements Contents.IDrive {
         console.error("Creating files at bucket level is not allowed :", options);
         await showDialog({
           title: 'Error Creating File',
-          body: 'Creating files at bucket level is not allowed.',
+          body: 'Files cannot be created outside of a bucket.',
           buttons: [Dialog.okButton()]
         });
         return DIRECTORY_IMODEL;
@@ -277,7 +277,7 @@ export class GCSDrive implements Contents.IDrive {
         console.error("Creating notebooks at bucket level is not allowed :", options);
         await showDialog({
           title: 'Error Creating Notebook',
-          body: 'Creating notebooks at bucket level is not allowed.',
+          body: 'Notebooks cannot be created outside of a bucket.',
           buttons: [Dialog.okButton()]
         });
         return DIRECTORY_IMODEL;
@@ -293,7 +293,7 @@ export class GCSDrive implements Contents.IDrive {
     }
 
     // Extract the localPath from options
-    let localPath = options?.path;
+    let localPath = typeof options?.path == 'string' ? options?.path : '';
 
     // Check if the provided path is valid and not the root directory
     if (localPath === '/' || localPath === '') {
@@ -643,7 +643,7 @@ export class GCSDrive implements Contents.IDrive {
       // Old path has file name and New file name given dont have extension
       await showDialog({
         title: 'Rename Error',
-        body: 'Invalid New File Name Provided.',
+        body: 'Invalid File Name Provided.',
         buttons: [Dialog.okButton()]
       });
       return DIRECTORY_IMODEL;

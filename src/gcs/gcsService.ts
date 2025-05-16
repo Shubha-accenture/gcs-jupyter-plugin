@@ -162,7 +162,7 @@ export class GcsService {
       
       return response;
     } catch (error: any) {
-      throw error?.message || 'Error saving file';
+      console.error(error?.message || 'Error saving file');
     }
   }
 

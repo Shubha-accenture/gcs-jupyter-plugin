@@ -158,7 +158,7 @@ class Client (tornado.web.RequestHandler):
                     return []
             elif format == 'json':
                 file_content = blob.download_as_text()
-                return json.loads(file_content)
+                return file_content
             else:
                 return blob.download_as_text()
 
@@ -351,7 +351,6 @@ class Client (tornado.web.RequestHandler):
             if not blob.exists():
                 # It might be a folder, so adding trail slash and checking for a blob (0 byte object will be returned)
                 # using blobs , we can exclude the 0 byte blob and count the children
-                print("passed blob name is : " , blob_name)
                 blobs = bucket.list_blobs(prefix=(blob_name if blob_name.endswith('/') else blob_name+"/"))
 
                 blob_count = 0
@@ -359,14 +358,12 @@ class Client (tornado.web.RequestHandler):
                     # For empty folders, gcs creates a zero-byte object with a trailing slash to simulate a folder.
                     # here we exclude that 0 byte object.
                     blob = iblob
-                    print("iter blob : " , iblob.name , " and path is : " , blob_name)
                     if (iblob.name[:-1] if iblob.name.endswith('/') else iblob.name) != blob_name:
                         blob_count += 1
                         # breaking the loop here, since we just want to know whether at-least 1 file present or not.
                         # Folder cannot be renamed even if 1 file/folder present
                         if blob_count > 1:
                             break
-                print("blob count :" , blob_count)
                 if blob.exists() and blob_count == 0 and (blob.name[:-1] if blob.name.endswith('/') else blob.name) == blob_name:
                     # Only 0 byte Object present
                     isFile = False
