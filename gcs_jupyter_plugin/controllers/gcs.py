@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-
 import json
 import os
 import tempfile
@@ -40,6 +39,22 @@ class ListBucketsController(APIHandler):
             self.log.exception("Error fetching datasets.")
             self.finish({"error": str(e)})
 
+class ListFilesController(APIHandler):
+    @tornado.web.authenticated
+    async def get(self):
+        try:
+            prefix = self.get_argument("prefix")
+            bucket = self.get_argument("bucket")
+            async with aiohttp.ClientSession() as client_session:
+                client = gcs.Client(
+                    await credentials.get_cached(), self.log, client_session
+                )
+
+                files = await client.list_files(bucket,prefix)
+            self.finish(json.dumps(files))
+        except Exception as e:
+            self.log.exception("Error fetching datasets")
+            self.finish({"error": str(e)})
 
 
 class CreateFolderController(APIHandler):
@@ -67,6 +82,7 @@ class CreateFolderController(APIHandler):
             self.log.exception("Error creating folder.")
             self.set_status(500)
             self.finish({"error": str(e)})
+
 
 class SaveFileController(APIHandler):
     @tornado.web.authenticated
@@ -100,8 +116,28 @@ class SaveFileController(APIHandler):
             self.log.exception("Error saving content")
             self.set_status(500)
             self.finish(json.dumps({"error": str(e)}))
-    
-    class DeleteFileController(APIHandler):
+
+
+class LoadFileController(APIHandler):
+    @tornado.web.authenticated
+    async def get(self):
+        try:
+            bucket = self.get_argument("bucket")
+            file_path = self.get_argument("path")
+            format = self.get_argument("format")
+            async with aiohttp.ClientSession() as client_session:
+                client = gcs.Client(
+                    await credentials.get_cached(), self.log, client_session
+                )
+
+                file = await client.get_file(bucket,file_path, format)
+            self.finish(json.dumps(file))
+        except Exception as e:
+            self.log.exception("Error fetching datasets")
+            self.finish({"error": str(e)})
+
+
+class DeleteFileController(APIHandler):
     @tornado.web.authenticated
     async def post(self):
         try:
@@ -192,3 +228,43 @@ class RenameFileController(APIHandler):
             self.log.exception("Error renaming file")
             self.set_status(500)
             self.finish(json.dumps({"error": str(e)}))
+
+
+class DownloadFileController(APIHandler):
+    @tornado.web.authenticated
+    async def get(self):
+        try:
+            bucket = self.get_argument("bucket")
+            file_path = self.get_argument("path")
+            name = self.get_argument("name")
+            format = self.get_argument("format")
+            async with aiohttp.ClientSession() as client_session:
+                client = gcs.Client(
+                    await credentials.get_cached(), self.log, client_session
+                )
+                file_content = await client.download_file(bucket,file_path, name, format)
+
+                self.finish(file_content)
+                
+                # if format == 'text':
+                #     self.set_header('Content-Type', 'text/plain')
+                #     self.set_header('Content-Disposition', f'attachment; filename="{name}"')
+                #     self.finish(file_content)
+                # elif format == 'json':
+                #     self.set_header('Content-Type', 'application/json')
+                #     self.set_header('Content-Disposition', f'attachment; filename="{name}"')
+                #     self.finish(file_content)
+                # elif format == 'base64':
+                #     self.set_header('Content-Type', 'application/octet-stream')
+                #     self.set_header('Content-Disposition', f'attachment; filename="{name}"')
+                #     self.finish(base64.b64decode(file_content))
+                # else:
+                #     # returning the content as it is when format is not available
+                #     self.set_header('Content-Type', 'application/octet-stream')
+                #     self.set_header('Content-Disposition', f'attachment; filename="{name}"')
+                #     self.finish(file_content)
+
+            
+        except Exception as e:
+            self.log.exception("Error fetching datasets")
+            self.finish({"error": str(e)})

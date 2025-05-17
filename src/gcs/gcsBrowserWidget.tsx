@@ -82,15 +82,78 @@ export class GcsBrowserWidget extends Widget {
   // Function to handle file upload
   private handleFileUpload = async (event: Event) => {
     const input = event.target as HTMLInputElement;
+    const files = Array.from(input.files || []);
 
     // Clear the input element's value to force the 'change' event on subsequent selections
     input.value = '';
 
-    showDialog({
-      title: 'Upload Error',
-      body: 'Uploading not implemented yet',
-      buttons: [Dialog.okButton()]
-    });
+    if (files && files.length > 0) {
+      files.forEach((fileData: any) => {
+        const file = fileData;
+        const reader = new FileReader();
+
+        reader.onloadend = async () => {
+          // Upload the file content to Google Cloud Storage
+          const gcsPath = this.browser.model.path.split(':')[1];
+          const path = GcsService.pathParser(gcsPath);
+          let filePath;
+
+          if (path.path === '') {
+            filePath = file.name;
+          } else {
+            filePath = path.path + '/' + file.name;
+          }
+
+          const content = await GcsService.listFiles({
+            prefix: filePath,
+            bucket: path.bucket
+          });
+
+          if (content.files && content.files.length > 0) {
+            const result = await showDialog({
+              title: 'Upload files',
+              body:
+                file.name +
+                ' already exists in ' +
+                path.bucket +
+                ', Do you want to overwrite the file?',
+              buttons: [Dialog.okButton({ label: 'Overwrite' }), Dialog.cancelButton()]
+            });
+
+            if (result.button.accept) {
+              await GcsService.saveFile({
+                bucket: path.bucket,
+                path: filePath,
+                contents: reader.result as string, // assuming contents is a string
+                upload: false,
+              });
+              toast.success(
+                `${file.name} overwritten successfully.`,
+                toastifyCustomStyle
+              );
+            }
+          } else {
+            await GcsService.saveFile({
+              bucket: path.bucket,
+              path: filePath,
+              contents: reader.result as string, // assuming contents is a string
+              upload: true,
+            });
+            toast.success(
+              `${file.name} uploaded successfully.`,
+              toastifyCustomStyle
+            );
+          }
+
+          // Optionally, update the FileBrowser model to reflect the newly uploaded file
+          // Example: Refresh the current directory
+          await this.browser.model.refresh();
+        };
+
+        // Read the file as text
+        reader.readAsText(file);
+      });
+    }
 
   };
 
