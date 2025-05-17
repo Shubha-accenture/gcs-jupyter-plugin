@@ -165,3 +165,106 @@ class Client (tornado.web.RequestHandler):
         except Exception as e:
             self.log.exception(f"Error getting file: {e}")
             return [] #Return empty list on error.
+
+
+
+    async def create_folder(self, bucket, path, folder_name):
+        try:
+            token = self._access_token
+            project = self.project_id
+            creds = credentials.Credentials(token)
+            client = storage.Client(project=project, credentials=creds)
+
+            # Format the folder path
+            new_folder_path = (
+                folder_name + "/" if path == "" else path + "/" + folder_name + "/"
+            )
+
+            # Get the bucket
+            bucket_obj = client.bucket(bucket)
+            # Create an empty blob with a trailing slash to indicate a folder
+            blob = bucket_obj.blob(new_folder_path)
+            # Upload empty content to create the folder
+            blob.upload_from_string("")
+
+            # Return the folder information
+            return {
+                "name": new_folder_path,
+                "bucket": bucket,
+                "id": f"{bucket}/{new_folder_path}",
+                "kind": "storage#object",
+                "mediaLink": blob.media_link,
+                "selfLink": blob.self_link,
+                "generation": blob.generation,
+                "metageneration": blob.metageneration,
+                "contentType": "application/x-www-form-urlencoded;charset=UTF-8",
+                "timeCreated": (
+                    blob.time_created.isoformat() if blob.time_created else ""
+                ),
+                "updated": blob.updated.isoformat() if blob.updated else "",
+                "storageClass": blob.storage_class,
+                "size": "0",
+                "md5Hash": blob.md5_hash,
+                "etag": blob.etag,
+            }
+        except Exception as e:
+            self.log.exception("Error creating folder.")
+            return {"error": str(e)}
+
+    async def save_content(self, bucket_name, destination_blob_name, content, uploadFlag):
+        """Upload content directly to Google Cloud Storage.
+
+        Args:
+            bucket_name: The name of the GCS bucket
+            destination_blob_name: The path in the bucket where the content should be stored
+            content: The content to upload (string or JSON)
+            uploadFlag: true if uploading a file, false when saving a file
+
+        Returns:
+            Dictionary with metadata or error information
+        """
+        try:
+            # Ensure content is in string format if it's not already
+            if isinstance(content, dict):
+                content = json.dumps(content)
+
+            token = self._access_token
+            project = self.project_id
+            creds = credentials.Credentials(token)
+            storage_client = storage.Client(project=project, credentials=creds)
+            bucket = storage_client.bucket(bucket_name)
+            blob = bucket.blob(destination_blob_name)
+
+            if blob.exists() and uploadFlag: # when uploadFlag false, user is peroforming save. So file should present.
+                return {
+                    "name": destination_blob_name,
+                    "bucket": bucket_name,
+                    "exists": True,
+                    "success": False,
+                    "error": f"A file with name {destination_blob_name} already exists in the destination.",
+                    "status": 409, # Conflict
+                }
+    
+            blob.upload_from_string(
+                content,
+                content_type="media",
+            )
+
+            return {
+                "name": destination_blob_name,
+                "bucket": bucket_name,
+                "size": blob.size,
+                "contentType": blob.content_type,
+                "timeCreated": (
+                    blob.time_created.isoformat() if blob.time_created else ""
+                ),
+                "updated": blob.updated.isoformat() if blob.updated else "",
+                "success": True,
+            }
+
+        except Exception as e:
+            if uploadFlag:
+                self.log.exception(f"Error uploading content to {destination_blob_name}.")
+            else:
+                self.log.exception(f"Error saving content to {destination_blob_name}.")
+            return {"error": str(e), "status": 500}

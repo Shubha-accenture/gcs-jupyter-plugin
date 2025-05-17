@@ -97,4 +97,71 @@ export class GcsService {
 
     return data;
   }
+
+  /**
+   * Thin wrapper around storage.folder.create
+   * @see https://cloud.google.com/storage/docs/create-folders
+   */
+  static async createFolder({
+    bucket,
+    path,
+    folderName
+    }: {
+      bucket: string;
+      path: string;
+      folderName: string;
+    }) {
+      const credentials = await authApi();
+      if (!credentials) {
+        throw 'not logged in';
+      }
+      const data = await requestAPI('api/storage/createFolder', {
+        method: 'POST',
+        body: JSON.stringify({
+          bucket,
+          path,
+          folderName
+        })
+      });
+    return data;
+  }
+
+  /**
+   * Thin wrapper around storage.object.upload
+   * @see https://cloud.google.com/storage/docs/uploading-objects-from-memory
+   */
+  static async saveFile({
+    bucket,
+    path,
+    contents,
+    upload = false
+  }: {
+    bucket: string;
+    path: string;
+    contents: Blob | string;
+    upload?: boolean 
+  }) {
+    const credentials = await authApi();
+    if (!credentials) {
+      throw 'not logged in';
+    }
+
+    try {
+      // Create form data to send the file
+      const formData = new FormData();
+      formData.append('bucket', bucket);
+      formData.append('path', path);
+      formData.append('contents', contents);
+      formData.append('upload', String(upload));
+      
+      const response = await requestAPI('api/storage/saveFile', {
+        method: 'POST',
+        body: formData,
+      });
+      
+      return response;
+    } catch (error: any) {
+      throw error?.message || 'Error saving file';
+    }
+  }
 }

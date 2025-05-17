@@ -19,6 +19,14 @@ import { Contents, ServerConnection } from '@jupyterlab/services';
 import { ISignal, Signal } from '@lumino/signaling';
 import { GcsService } from './gcsService';
 
+import { toast } from 'react-toastify';
+import 'react-toastify/dist/ReactToastify.css';
+import { showDialog, Dialog } from '@jupyterlab/apputils';
+
+import {
+  toastifyCustomStyle,
+} from '../utils/utils';
+
 // Template for an empty Directory IModel.
 const DIRECTORY_IMODEL: Contents.IModel = {
   type: 'directory',
@@ -32,6 +40,8 @@ const DIRECTORY_IMODEL: Contents.IModel = {
   mimetype: ''
 };
 
+
+let untitledFolderSuffix = '';
 export class GCSDrive implements Contents.IDrive {
   constructor() {
     // Not actually used, but the Contents.IDrive interface requires one.
@@ -234,19 +244,336 @@ export class GCSDrive implements Contents.IDrive {
     };
   }
 
-  getDownloadUrl(localPath: string): Promise<string> {
-    throw new Error('Method not implemented.');
+  async newUntitled(
+    options?: Contents.ICreateOptions
+  ): Promise<Contents.IModel> {
+
+    // Validating parameters
+    if (!options) { 
+      console.error("No data provided for this operation. :", options);
+        return Promise.reject('No data provided for this operation.');
+    }
+    else if(!options.path){ // Checkpoint for Bucket Level Object Creation
+      if (options.type === 'directory'){
+        console.error("Creating Folders at bucket level is not allowed. Note : Please use console to create new bucket :", options);
+        await showDialog({
+          title: 'Create Bucket Error',
+          body: 'Please use Google Cloud Console to create new bucket.',
+          buttons: [Dialog.okButton()]
+        });
+        return DIRECTORY_IMODEL;
+      }
+      else if (options.type === 'file'){
+        console.error("Creating files at bucket level is not allowed :", options);
+        await showDialog({
+          title: 'Error Creating File',
+          body: 'Creating files at bucket level is not allowed.',
+          buttons: [Dialog.okButton()]
+        });
+        return DIRECTORY_IMODEL;
+      }
+      else if (options.type === 'notebook'){
+        console.error("Creating notebooks at bucket level is not allowed :", options);
+        await showDialog({
+          title: 'Error Creating Notebook',
+          body: 'Creating notebooks at bucket level is not allowed.',
+          buttons: [Dialog.okButton()]
+        });
+        return DIRECTORY_IMODEL;
+      }else{
+        console.error("Unsupported creation type :", options.type);
+        await showDialog({
+          title: 'Error',
+          body: 'Unsupported creation type :' + options.type,
+          buttons: [Dialog.okButton()]
+        });
+        return DIRECTORY_IMODEL;
+      }
+    }
+
+    // Extract the localPath from options
+    let localPath = options?.path;
+
+    // Check if the provided path is valid and not the root directory
+    if (localPath === '/' || localPath === '') {
+      console.error("Cannot create new objects in the root directory:", localPath);
+      return Promise.reject('Cannot create new objects in the root directory.');
+    }
+
+    const parsedPath = GcsService.pathParser(localPath);
+
+    if (options.type === 'directory') {
+  
+      const content = await GcsService.listFiles({
+        prefix:
+        parsedPath.path === ''
+            ? parsedPath.path + 'UntitledFolder'
+            : parsedPath.path + '/UntitledFolder',
+        bucket: parsedPath.bucket
+      });
+
+      if (content.prefixes) {
+        let maxSuffix  = 1;
+        content.prefixes.forEach((data: { prefixes :{ name: string; updatedAt: string }}) => {
+          const parts = data.prefixes.name.split('/');
+          if (parts.length >= 2) {
+            const potentialSuffix = parts[parts.length - 2];
+            const suffixElement = potentialSuffix.match(/\d+$/);
+            if (suffixElement !== null && parseInt(suffixElement[0]) >= maxSuffix) {
+              maxSuffix = parseInt(suffixElement[0]) + 1;
+            }
+          }
+          untitledFolderSuffix = maxSuffix.toString();
+        });
+      } else {
+        untitledFolderSuffix = '';
+      }
+      let folderName = 'UntitledFolder' + untitledFolderSuffix;
+  
+      // Create the folder in your backend service
+      const response = await GcsService.createFolder({
+        bucket: parsedPath.bucket,
+        path: parsedPath.path,
+        folderName: folderName
+      });
+  
+      // Handle the response from your backend service appropriately
+      if (response) {
+        // Folder created successfully, return the folder metadata
+        return {
+          type: 'directory',
+          path: localPath + (localPath.endsWith('/') ? folderName : '/' + folderName),
+          name: folderName,
+          format: null,
+          created: new Date().toISOString(),
+          writable: true,
+          last_modified: new Date().toISOString(),
+          mimetype: '',
+          content: null
+        };
+      } else {
+        // Handle folder creation failure
+        console.error("Failed to create folder.");
+        await showDialog({
+          title: 'Error Creating Folder',
+          body: `Folder ${folderName} creation is failed.`,
+          buttons: [Dialog.okButton()]
+        });
+        return DIRECTORY_IMODEL;
+      }
+    }
+    else if (options.type === 'file') {
+
+      const content = await GcsService.listFiles({
+        prefix:
+        parsedPath.path === ''
+            ? parsedPath.path + 'untitled'
+            : parsedPath.path + '/untitled',
+        bucket: parsedPath.bucket
+      });
+      
+      let maxSuffix = 1;
+      let baseFileName = 'untitled';
+      let fileExtension = '.txt'; // Default extension
+
+      if (content.files) {
+        content.files.forEach((file: { items: { name: string } }) => {
+          const nameParts = file.items.name.split('/');
+          const fileName = nameParts.at(-1) ?? '';
+          const baseNameMatch = fileName.match(/^untitled(\d*)(\..*)?$/);
+          if (baseNameMatch) {
+            const suffix = baseNameMatch[1];
+            const ext = baseNameMatch[2] || '.txt';
+            if (ext === fileExtension && suffix) {
+              const num = parseInt(suffix);
+              if (!isNaN(num) && num >= maxSuffix) {
+                maxSuffix = num + 1;
+              }
+            } else if (ext === fileExtension && maxSuffix === 1 && fileName === 'untitled.txt') {
+              maxSuffix = 2;
+            }
+          }
+        });
+      }
+
+      const newFileName = maxSuffix > 1 ? `${baseFileName}${maxSuffix}${fileExtension}` : `${baseFileName}${fileExtension}`;
+      //const newFilePath = parsedPath.path === '' ? newFileName : `${parsedPath.path}/${newFileName}`;
+
+      // Logic for creating a new file with a specific name
+      const filePathInGCS = parsedPath.path === '' ? newFileName : `${parsedPath.path}/${newFileName}`;
+      
+      const response = await GcsService.saveFile({
+        bucket: parsedPath.bucket,
+        path: filePathInGCS,
+        contents: ''
+      });
+      
+
+      if (response) {
+        const parts = newFileName.split('.');
+        const ext = parts.length > 1 ? `.${parts.slice(1).join('.')}` : '';
+        const mimetype = ext === '.json' ? 'application/json' : 'text/plain'; // Basic MIME type detection
+
+        return {
+          type: 'file',
+          path: `${localPath}/${newFileName}`,
+          name: newFileName,
+          format: 'text', // Default format
+          content: '',
+          created: new Date().toISOString(),
+          writable: true,
+          last_modified: new Date().toISOString(),
+          mimetype: mimetype
+        };
+      } else {
+        console.error("Failed to create file.");
+        await showDialog({
+          title: 'Error Creating File',
+          body: `File ${newFileName} creation is failed.`,
+          buttons: [Dialog.okButton()]
+        });
+        return DIRECTORY_IMODEL;
+      }
+    } 
+    else if (options.type === 'notebook') {
+      const notebookExtension = '.ipynb';
+      const baseNotebookName = 'Untitled';
+
+      const content = await GcsService.listFiles({
+        prefix:
+          parsedPath.path === ''
+            ? parsedPath.path + baseNotebookName
+            : parsedPath.path + '/' + baseNotebookName,
+        bucket: parsedPath.bucket
+      });
+
+      let maxSuffix = 1;
+
+      if (content.files) {
+        content.files.forEach((file: { items: { name: string } }) => {
+          const nameParts = file.items.name.split('/');
+          const fileName = nameParts.at(-1) ?? '';
+          const baseNameMatch = fileName.match(/^Untitled(\d*)(\.ipynb)?$/);
+          if (baseNameMatch) {
+            const suffix = baseNameMatch[1];
+            const ext = baseNameMatch[2];
+            if (ext === notebookExtension && suffix) {
+              const num = parseInt(suffix);
+              if (!isNaN(num) && num >= maxSuffix) {
+                maxSuffix = num + 1;
+              }
+            } else if (ext === notebookExtension && maxSuffix === 1 && fileName === 'Untitled.ipynb') {
+              maxSuffix = 2;
+            }
+          }
+        });
+      }
+
+      const newNotebookName = maxSuffix > 1 ? `${baseNotebookName}${maxSuffix}${notebookExtension}` : `${baseNotebookName}${notebookExtension}`;
+      const filePathInGCS = parsedPath.path === '' ? newNotebookName : `${parsedPath.path}/${newNotebookName}`;
+
+      const response = await GcsService.saveFile({
+        bucket: parsedPath.bucket,
+        path: filePathInGCS,
+        contents: JSON.stringify({
+          cells: [],
+          metadata: {
+            kernelspec: {
+              display_name: 'Python 3', // Default kernel
+              language: 'python',
+              name: 'python3'
+            },
+            language_info: {
+              codemirror_mode: {
+                name: 'ipython',
+                version: 3
+              },
+              file_extension: '.py',
+              mimetype: 'text/x-python',
+              name: 'python',
+              nbconvert_exporter: 'python',
+              pygments_lexer: 'ipython3',
+              version: '3.x.x'
+            }
+          },
+          nbformat: 4,
+          nbformat_minor: 5
+        })
+      });
+
+      if (response) {
+        return {
+          type: 'notebook',
+          path: `${localPath}/${newNotebookName}`,
+          name: newNotebookName,
+          format: 'json', // Notebooks are JSON
+          content: null, // Content will be fetched separately
+          created: new Date().toISOString(),
+          writable: true,
+          last_modified: new Date().toISOString(),
+          mimetype: 'application/x-ipynb+json'
+        };
+      } else {
+        console.error("Failed to create notebook.");
+        await showDialog({
+          title: 'Error Creating Notebook',
+          body: `Notebook ${newNotebookName} creation failed.`,
+          buttons: [Dialog.okButton()]
+        });
+        return DIRECTORY_IMODEL;
+      }
+    }
+    else {
+      console.warn(`Unsupported creation type: ${options.type}`);
+      await showDialog({
+        title: 'Unsupported Type Error',
+        body: `Unsupported creation type: ${options.type}.`,
+        buttons: [Dialog.okButton()]
+      });
+      return DIRECTORY_IMODEL;
+    }
+
   }
-  newUntitled(options?: Contents.ICreateOptions): Promise<Contents.IModel> {
+
+  async save(
+    localPath: string,
+    options?: Partial<Contents.IModel>
+  ): Promise<Contents.IModel> {
+    const path = GcsService.pathParser(localPath);
+    const content =
+      options?.format == 'json'
+        ? JSON.stringify(options.content)
+        : options?.content;
+    const resp = await GcsService.saveFile({
+      bucket: path.bucket,
+      path: path.path,
+      contents: content
+    });
+    toast.success(
+      `${path.name} saved successfully.`,
+      toastifyCustomStyle
+    );
+    return {
+      type: 'file',
+      path: localPath,
+      name: localPath.split('\\').at(-1) ?? '',
+      format: 'text',
+      created: '',
+      content: '',
+      writable: true,
+      last_modified: (resp as { updated?: string }).updated ?? '',
+      mimetype: '',
+      ...options
+    };
+  }
+
+  getDownloadUrl(localPath: string): Promise<string> {
     throw new Error('Method not implemented.');
   }
   delete(localPath: string): Promise<void> {
     throw new Error('Method not implemented.');
   }
   rename(oldLocalPath: string, newLocalPath: string): Promise<Contents.IModel> {
-    throw new Error('Method not implemented.');
-  }
-  save(localPath: string, options?: Partial<Contents.IModel>): Promise<Contents.IModel> {
     throw new Error('Method not implemented.');
   }
   copy(localPath: string, toLocalDir: string): Promise<Contents.IModel> {
