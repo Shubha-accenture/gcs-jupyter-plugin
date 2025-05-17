@@ -166,8 +166,6 @@ class Client (tornado.web.RequestHandler):
             self.log.exception(f"Error getting file: {e}")
             return [] #Return empty list on error.
 
-
-
     async def create_folder(self, bucket, path, folder_name):
         try:
             token = self._access_token
@@ -267,4 +265,145 @@ class Client (tornado.web.RequestHandler):
                 self.log.exception(f"Error uploading content to {destination_blob_name}.")
             else:
                 self.log.exception(f"Error saving content to {destination_blob_name}.")
+            return {"error": str(e), "status": 500}
+
+    
+    async def delete_file(self, bucket, path):
+        try:
+            token = self._access_token
+            project = self.project_id
+            creds = credentials.Credentials(token)
+            client = storage.Client(project=project, credentials=creds)
+
+            # Get the bucket
+            bucket_obj = client.bucket(bucket)
+
+            # Check if it's a folder/bucket deletion attempt
+            if path == "" or path == "/":
+                return {
+                    "error": "Deleting Bucket is not allowed.",
+                    "status": 409,
+                }
+
+            # retriving blob
+            blob = bucket_obj.blob(path)
+
+            isFile = True
+            
+            if not blob.exists():
+                # using blobs , we can exclude the 0 byte blob and count the children
+                blobs = bucket_obj.list_blobs(prefix=path+"/")
+
+                blob_count = 0
+                for iblob in blobs:
+                    # For empty folders, gcs creates a zero-byte object with a trailing slash to simulate a folder.
+                    # here we exclude that 0 byte object.
+                    blob = iblob
+                    isFile = False
+                    if (iblob.name[:-1] if iblob.name.endswith('/') else iblob.name) != path:
+                        blob_count += 1
+                        # breaking the loop here, since we just want to know whether at-least 1 file present or not.
+                        # Folder cannot be deleted even if 1 file/folder present
+                        break
+
+                if blob_count > 0:
+                    return {
+                        "error": "Non-Empty folder cannot be deleted.",
+                        "status": 409,
+                    }
+
+            # Checking whether blob exists
+            if not blob.exists():
+                # Without trailing slash, 0 byte object wont be pointed out. 
+                # So, In the case of Empty folder, blob.exists() returns false and causes 404.
+                blob = bucket_obj.blob(path+"/")
+                if not blob.exists():
+                    return {"error": "File/Folder not found.", "status": 404}
+
+            # Attempt to delete the blob
+            try:
+                blob.delete()
+                return {"success": True}
+            except Exception as e:
+                self.log.exception(f"Error deleting file/folder {path}.")
+                return {"error": str(e), "status": 500}
+
+        except Exception as e:
+            self.log.exception(f"Error deleting file {path}.")
+            return {"error": str(e), "status": 500}
+
+    async def rename_file(self, bucket_name, blob_name, new_name):
+        """
+        Renames a blob using the rename_blob method.
+        Note: This only works within the same bucket.
+        """
+        try:
+            token = self._access_token
+            project = self.project_id
+            creds = credentials.Credentials(token)
+            storage_client = storage.Client(project=project, credentials=creds)
+
+            # Get the bucket and blob
+            bucket = storage_client.bucket(bucket_name)
+            blob = bucket.blob(blob_name)
+            # Check if source blob exists
+            isFile = True
+            if not blob.exists():
+                # It might be a folder, so adding trail slash and checking for a blob (0 byte object will be returned)
+                # using blobs , we can exclude the 0 byte blob and count the children
+                print("passed blob name is : " , blob_name)
+                blobs = bucket.list_blobs(prefix=(blob_name if blob_name.endswith('/') else blob_name+"/"))
+
+                blob_count = 0
+                for iblob in blobs:
+                    # For empty folders, gcs creates a zero-byte object with a trailing slash to simulate a folder.
+                    # here we exclude that 0 byte object.
+                    blob = iblob
+                    print("iter blob : " , iblob.name , " and path is : " , blob_name)
+                    if (iblob.name[:-1] if iblob.name.endswith('/') else iblob.name) != blob_name:
+                        blob_count += 1
+                        # breaking the loop here, since we just want to know whether at-least 1 file present or not.
+                        # Folder cannot be renamed even if 1 file/folder present
+                        if blob_count > 1:
+                            break
+                print("blob count :" , blob_count)
+                if blob.exists() and blob_count == 0 and (blob.name[:-1] if blob.name.endswith('/') else blob.name) == blob_name:
+                    # Only 0 byte Object present
+                    isFile = False
+                elif blob_count > 0:
+                    return {
+                        "error": "Non-Empty folder cannot be renamed.",
+                        "status": 409,
+                    }
+                else:
+                    return {"error": f"{blob_name} not found",
+                        "status": 404}
+
+            # Check for availability of new name ( if already present, return error)
+            if isFile:
+                blobNew = bucket.blob(new_name)
+
+                if blobNew.exists():
+                    return {"error": f"A file with name {blobNew.name} already exists in the destination.",
+                            "status": 409}
+            else:
+                # Adding Trailing slash to avoid partial match of other folders
+                blobNew = bucket.blob(new_name)
+                blobs = bucket.list_blobs(prefix=new_name+"/")
+                if any(blobs):
+                    return {"error": f"A folder with name {blobNew.name} already exists in the destination.",
+                            "status": 409}
+
+            # Rename the blob
+            if isFile:
+                new_blob = bucket.rename_blob(blob, new_name)
+            else:
+                new_blob = bucket.rename_blob(blob, new_name+"/")
+
+            # Return success response
+            return {"name": new_blob.name, "bucket": bucket_name,
+                         "success": True , "status" : 200 }
+
+        except Exception as e:
+            self.log.exception(f"Error renaming from {blob_name} to {new_name}.")
             return {"error": str(e), "status": 500}

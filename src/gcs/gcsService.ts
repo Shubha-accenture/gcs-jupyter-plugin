@@ -17,6 +17,7 @@
 
 import { requestAPI } from '../handler';
 import { authApi } from '../utils/utils';
+import { showDialog, Dialog } from '@jupyterlab/apputils';
 
 export class GcsService {
   /**
@@ -162,6 +163,76 @@ export class GcsService {
       return response;
     } catch (error: any) {
       throw error?.message || 'Error saving file';
+    }
+  }
+
+  /**
+   * Thin wrapper around storage.object.delete
+   * @see https://cloud.google.com/storage/docs/deleting-objects
+   */
+  static async deleteFile({ bucket, path }: { bucket: string; path: string }) {
+    const credentials = await authApi();
+    if (!credentials) {
+      throw 'not logged in';
+    }
+    try {
+      const response: { status?: number, error?: string } = await requestAPI('api/storage/deleteFile', {
+        method: 'POST',
+        body: JSON.stringify({
+          bucket,
+          path
+        })
+      });
+      
+      return response;
+    } catch (error: unknown) {
+      if (typeof error === 'string') {
+        throw error; 
+      } else {
+        throw 'Error deleting file';
+      }
+    }
+  }
+
+  /**
+   * Thin wrapper around storage.object.rename
+   * @see https://cloud.google.com/storage/docs/copying-renaming-moving-objects
+   */
+  static async renameFile({
+    oldBucket,
+    oldPath,
+    newBucket,
+    newPath
+  }: {
+    oldBucket: string;
+    oldPath: string;
+    newBucket: string;
+    newPath: string;
+  }) {
+    const credentials = await authApi();
+    if (!credentials) {
+      throw 'not logged in';
+    }
+    try {
+      const response: { status?: number, error?: string } = await requestAPI('api/storage/renameFile', {
+        method: 'POST',
+        body: JSON.stringify({
+          oldBucket,
+          oldPath,
+          newBucket,
+          newPath
+        })
+      });
+
+      return response;
+    } catch (error: any) {
+      await showDialog({
+        title: 'Rename Error',
+        body: 'Error renaming file',
+        buttons: [Dialog.okButton()]
+      });
+      console.error('Error during rename operation:', error);
+      throw error?.message || 'Error renaming file';
     }
   }
 }

@@ -1,4 +1,3 @@
-
 import json
 
 from jupyter_server.base.handlers import APIHandler
@@ -12,6 +11,8 @@ from gcs_jupyter_plugin.controllers.gcs import (
     LoadFileController,
     CreateFolderController,
     SaveFileController,
+    DeleteFileController,
+    RenameFileController,
 )
 
 
@@ -65,6 +66,8 @@ def setup_handlers(web_app):
         "api/storage/loadFile": LoadFileController,
         "api/storage/createFolder": CreateFolderController,
         "api/storage/saveFile": SaveFileController,
+        "api/storage/deleteFile": DeleteFileController,
+        "api/storage/renameFile": RenameFileController,
     }
     handlers = [(full_path(name), handler) for name, handler in handlersMap.items()]
     web_app.add_handlers(host_pattern, handlers)
