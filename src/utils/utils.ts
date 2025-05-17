@@ -24,7 +24,7 @@ import { DataprocLoggingService } from './loggingService';
 
 export const toastifyCustomStyle: ToastOptions<{}> = {
   hideProgressBar: true,
-  autoClose: 60000,
+  autoClose: 2000,
   theme: 'dark',
   position: toast.POSITION.BOTTOM_CENTER
 };
