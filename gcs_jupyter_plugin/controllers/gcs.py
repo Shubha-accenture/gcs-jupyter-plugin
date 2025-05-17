@@ -17,10 +17,12 @@ import os
 import tempfile
 import aiohttp
 import tornado
+import nbformat
 from jupyter_server.base.handlers import APIHandler
 
 from gcs_jupyter_plugin import credentials
 from gcs_jupyter_plugin.services import gcs
+
 
 
 class ListBucketsController(APIHandler):
@@ -131,10 +133,20 @@ class LoadFileController(APIHandler):
                 )
 
                 file = await client.get_file(bucket,file_path, format)
-            self.finish(json.dumps(file))
+
+            # If .ipynb file, then sanitizing
+            if file_path.endswith(".ipynb") and format == "json":
+                file = nbformat.reads(file, 4, capture_validation_error=True)
+                self.finish(json.dumps(file))
+            elif format == "base64":
+                self.write(file)
+            else:
+                self.finish(file)
         except Exception as e:
             self.log.exception("Error fetching datasets")
             self.finish({"error": str(e)})
+
+        
 
 
 class DeleteFileController(APIHandler):
