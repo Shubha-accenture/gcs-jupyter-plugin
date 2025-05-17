@@ -24,7 +24,7 @@ import { DataprocLoggingService } from './loggingService';
 
 export const toastifyCustomStyle: ToastOptions<{}> = {
   hideProgressBar: true,
-  autoClose: 2000,
+  autoClose: 60000,
   theme: 'dark',
   position: toast.POSITION.BOTTOM_CENTER
 };
@@ -82,4 +82,3 @@ export async function loggedFetch(
   DataprocLoggingService.logFetch(input, init, resp);
   return resp;
 }
-

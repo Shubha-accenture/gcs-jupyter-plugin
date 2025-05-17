@@ -61,7 +61,7 @@ export class GcsBrowserWidget extends Widget {
     } else {
       showDialog({
         title: 'Upload Error',
-        body: 'Uploading files at bucket level is not allowed.',
+        body: 'Files cannot be uploaded outside of a bucket.',
         buttons: [Dialog.okButton()]
       });
     }
@@ -73,7 +73,7 @@ export class GcsBrowserWidget extends Widget {
     } else {
       showDialog({
         title: 'Create Bucket Error',
-        body: 'Please use Google Cloud Console to create new bucket.',
+        body: 'Folders cannot be created outside of a bucket.',
         buttons: [Dialog.okButton()]
       });
     }
@@ -114,10 +114,9 @@ export class GcsBrowserWidget extends Widget {
               title: 'Upload files',
               body:
                 file.name +
-                ' already exists in ' +
-                path.bucket +
-                ', Do you want to overwrite the file?',
-              buttons: [Dialog.okButton({ label: 'Overwrite' }), Dialog.cancelButton()]
+                ' already exists' +
+                ', Do you want to overwrite?',
+              buttons: [Dialog.cancelButton(), Dialog.okButton({ label: 'Overwrite' })]
             });
 
             if (result.button.accept) {
