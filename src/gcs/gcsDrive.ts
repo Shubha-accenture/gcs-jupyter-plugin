@@ -77,9 +77,23 @@ export class GCSDrive implements Contents.IDrive {
     if (localPath.length === 0) {
       // Case 1: Return the buckets.
       return await this.getBuckets();
-    }else{
-      return Promise.reject("List Files and Get File service will be pushed in upcoming commits")
     }
+
+    // Case 2: Return the directory contents.
+    const directory = await this.getDirectory(localPath);
+    const name = localPath.split('/').pop() ?? ""; // Gets the last part of the path
+    const isFile = name.includes('.') && name.lastIndexOf('.') > 0;
+    if (directory.content.length === 0 && isFile) {
+      // Case 3?: Looks like there's no items with this prefix and path is a file, so
+      //  maybe it's a file?  Try fetching the file.
+      try {
+        return await this.getFile(localPath, options);
+      } catch (e) {
+        // If it's a 404, maybe it was an (empty) directory after all.
+        // fall out and return the directory IModel.
+      }
+    }
+    return directory;
   }
 
   /**
@@ -125,6 +139,98 @@ export class GCSDrive implements Contents.IDrive {
           name: bucket.items.name,
           last_modified: bucket.items.updated ?? ''
         })) ?? []
+    };
+  }
+
+  /**
+   * @returns IModel directory for the given local path.
+   */
+  private async getDirectory(localPath: string) {
+    const path = GcsService.pathParser(localPath);
+    let searchInput = document.getElementById('filter-buckets-objects');
+    //@ts-ignore
+    let searchValue = searchInput.value;
+    const prefix = path.path.length > 0 ? `${path.path}/` : path.path;
+    const content = await GcsService.listFiles({
+        prefix: prefix + searchValue,
+        bucket: path.bucket,
+    });
+    if (!content) {
+        throw 'Error Listing Objects';
+    }
+    let directory_contents: Contents.IModel[] = [];
+
+    if (content.prefixes && content.prefixes.length > 0) {
+      directory_contents = directory_contents.concat(
+        content.prefixes
+        .map((item: { prefixes: { name: string } }) => {
+          const pref = item.prefixes.name;
+          const path = pref.split('/');
+          const name = path.at(-2) ?? prefix;
+          return {
+            ...DIRECTORY_IMODEL,
+            path: `${localPath}/${name}`,
+            name: name
+          };
+        })
+      ); 
+    }
+
+    if (content.files && content.files.length > 0) {
+        directory_contents = directory_contents.concat(
+          content.files.map((item: { items: { name: string; updated: string; size: number; content_type: string; timeCreated: string; } }) => {
+            const itemName = item.items.name!;
+            const pathParts = itemName.split('/');
+            const name = pathParts.at(-1) ?? itemName;
+            return {
+                type: 'file',
+                path: `${localPath}/${name}`,
+                name: name,
+                format: 'base64',
+                content: null,
+                created: item.items.timeCreated ?? '',
+                writable: true,
+                last_modified: item.items.updated ?? '',
+                mimetype: item.items.content_type ?? '',
+                size: item.items.size
+            };
+        }));
+    }
+
+    return {
+        ...DIRECTORY_IMODEL,
+        path: localPath,
+        name: localPath.split('\\').at(-1) ?? '',
+        content: directory_contents,
+    };
+  }
+
+  /**
+   * @returns IModel file for the given local path.
+   */
+  private async getFile(
+    localPath: string,
+    options?: Contents.IFetchOptions
+  ): Promise<Contents.IModel> {
+    const path = GcsService.pathParser(localPath);
+    const content = await GcsService.loadFile({
+      path: path.path,
+      bucket: path.bucket,
+      format: options?.format ?? 'text'
+    });
+    if (!content) {
+      throw 'Error Listing Objects';
+    }
+    return {
+      type: 'file',
+      path: localPath,
+      name: localPath.split('\\').at(-1) ?? '',
+      format: options?.format ?? 'text',
+      content: content,
+      created: '',
+      writable: true,
+      last_modified: '',
+      mimetype: ''
     };
   }
 

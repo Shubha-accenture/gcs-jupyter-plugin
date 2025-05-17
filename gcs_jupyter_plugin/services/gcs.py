@@ -73,3 +73,95 @@ class Client (tornado.web.RequestHandler):
         except Exception as e:
             self.log.exception("Error fetching datasets list.")
             return {"error": str(e)}
+
+    # gcs -- list files implementation
+    async def list_files(self, bucket , prefix):
+        try:
+            result = {}
+            file_list = []
+            subdir_list = []
+            token = self._access_token
+            project = self.project_id
+            creds = credentials.Credentials(token)
+            client = storage.Client(project=project, credentials=creds)
+            blobs = client.list_blobs(bucket , prefix=prefix, delimiter="/")
+            bucketObj = client.bucket(bucket)
+            files = list(blobs)
+
+            # Prefixes dont have crreated / updated at data with Object. So we have to run through loop
+            # and hit client.list_blobs() with each prefix to load blobs to get updated date info ( we can set max_result=1 ).
+            # This is taking time when loop runs. So to avoid this, Grouping prefix with updated/created date
+            prefix_latest_updated = {}
+            if blobs.prefixes:
+                all_blobs_under_prefix = client.list_blobs(bucket, prefix=prefix)
+                for blob in all_blobs_under_prefix:
+                    relative_name = blob.name[len(prefix or ''):]
+                    parts = relative_name.split('/', 1)
+                    if len(parts) > 1:
+                        subdirectory = prefix + parts[0] + '/'
+                        if subdirectory in blobs.prefixes:
+                            if subdirectory not in prefix_latest_updated or (blob.updated and prefix_latest_updated[subdirectory] < blob.updated):
+                                prefix_latest_updated[subdirectory] = blob.updated
+
+            # Adding Sub-directories
+            if blobs.prefixes:
+                for pref in blobs.prefixes:
+                    
+                    subdir_name = pref[:-1]
+                    subdir_list.append(
+                        {
+                            "prefixes": {
+                                "name": pref,
+                                "updatedAt": prefix_latest_updated.get(pref).isoformat() if prefix_latest_updated.get(pref) else ""
+                            }
+                        }
+                    )
+            
+            # Adding Files
+            for file in files:
+                if not (file.name == prefix and file.size == 0):
+                    file_list.append(
+                        {
+                            "items": {
+                                "name": file.name,
+                                "timeCreated": file.time_created.isoformat() if file.time_created else "",
+                                "updated": file.updated.isoformat() if file.updated else "",
+                                "size": file.size,
+                                "content_type": file.content_type,
+                            }
+                        }
+                    )
+            
+            result["prefixes"] = subdir_list
+            result["files"] = file_list
+            return result
+        
+        except Exception as e:
+            self.log.exception(f"Error listing files: {e}")
+            return [] #Return empty list on error.
+
+    async def get_file(self, bucket_name, file_path , format):
+        try:
+            token = self._access_token
+            project = self.project_id
+            creds = credentials.Credentials(token)
+            client = storage.Client(project=project, credentials=creds)
+            bucket = client.bucket(bucket_name)
+            blob = bucket.blob(file_path)
+            
+            if format == 'base64':
+                file_content = blob.download_as_bytes()
+                try:
+                    base64_encoded = base64.b64encode(file_content).decode('utf-8')
+                    return base64_encoded
+                except Exception as encode_error:
+                    return []
+            elif format == 'json':
+                file_content = blob.download_as_text()
+                return json.loads(file_content)
+            else:
+                return blob.download_as_text()
+
+        except Exception as e:
+            self.log.exception(f"Error getting file: {e}")
+            return [] #Return empty list on error.
