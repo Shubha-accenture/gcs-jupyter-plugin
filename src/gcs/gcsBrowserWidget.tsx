@@ -330,17 +330,12 @@ export class GcsBrowserWidget extends Widget {
             });
           }
 
-          // Optionally, update the FileBrowser model to reflect the newly uploaded file
-          // Example: Refresh the current directory
           await this._browser.model.refresh();
         };
-        this.hideProgressBar(); // Hide spinner after file upload is initiated
 
-        if (file.type.startsWith('image/') || file.type === 'application/pdf') {
-          reader.readAsDataURL(file); // Read as Data URL for binary files
-        } else {
-          reader.readAsText(file); // Read as text for text-based files
-        }
+        reader.readAsDataURL(file); // Read as Data URL for binary files
+        
+        this.hideProgressBar();
       });
     }
   };
