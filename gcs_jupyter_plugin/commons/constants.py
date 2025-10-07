@@ -20,3 +20,18 @@ STORAGE_SERVICE_DEFAULT_URL = "https://storage.googleapis.com/storage/v1/"
 CONTENT_TYPE = "application/json"
 
 MISSING_REQUIRED_PARAMETERS_ERROR_MESSAGE = "Missing required parameters."
+
+BINARY_ENCODING_EXTENSIONS = (".parquet", "avro", "orc", ".png", ".jpg", ".jpeg", ".gif", ".pdf")
+
+MIMETYPE_MAP = {
+                ".json": "application/json",
+                ".txt": "text/plain",
+                ".csv": "text/plain",
+                ".ipynb": "application/x-ipynb+json",
+                ".png": "image/png",
+                ".jpg": "image/jpeg",
+                ".jpeg": "image/jpeg",
+                ".gif": "image/gif",
+                ".pdf": "application/pdf",
+                ".html": "text/html",
+            }

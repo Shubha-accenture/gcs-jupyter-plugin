@@ -26,7 +26,7 @@ import tornado.web
 from google.oauth2 import credentials
 from google.cloud import storage
 
-from gcs_jupyter_plugin.commons.constants import CONTENT_TYPE, STORAGE_SERVICE_NAME
+from gcs_jupyter_plugin.commons.constants import CONTENT_TYPE, STORAGE_SERVICE_NAME, BINARY_ENCODING_EXTENSIONS, MIMETYPE_MAP
 
 
 class Client(tornado.web.RequestHandler):
@@ -237,10 +237,7 @@ class Client(tornado.web.RequestHandler):
             elif isinstance(content, dict):
                 bytes_content = json.dumps(content).encode("utf-8")
             elif isinstance(content, str):
-                if destination_blob_name.lower().endswith(
-                    (".parquet", ".png", ".jpg", ".jpeg", ".gif", ".pdf")
-                ):
-                    # Recover original bytes from JupyterLab UTF-8 string
+                if destination_blob_name.lower().endswith(BINARY_ENCODING_EXTENSIONS):
                     bytes_content = content.encode("latin1")
                 else:
                     bytes_content = content.encode("utf-8")
@@ -267,20 +264,8 @@ class Client(tornado.web.RequestHandler):
                 }
 
             # Determine content type
-            content_type = "application/octet-stream"
-            lower_name = destination_blob_name.lower()
-            if lower_name.endswith(".json"):
-                content_type = "application/json"
-            elif lower_name.endswith((".txt", ".csv")):
-                content_type = "text/plain"
-            elif lower_name.endswith(".ipynb"):
-                content_type = "application/x-ipynb+json"
-            elif lower_name.endswith((".png", ".jpg", ".jpeg", ".gif")):
-                content_type = f"image/{lower_name.split('.')[-1]}"
-            elif lower_name.endswith(".pdf"):
-                content_type = "application/pdf"
-            elif lower_name.endswith(".html"):
-                content_type = "text/html"
+            file_ext = pathlib.Path(destination_blob_name.lower()).suffix
+            content_type = MIMETYPE_MAP.get(file_ext, "application/octet-stream")
 
             # Upload to GCS
             file_obj = io.BytesIO(bytes_content)
