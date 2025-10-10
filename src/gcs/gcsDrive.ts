@@ -287,21 +287,39 @@ export class GCSDrive implements Contents.IDrive {
     localPath: string,
     options?: Contents.IFetchOptions
   ): Promise<Contents.IModel> {
+    let fileContent: string | any;
+    const format = options?.format ?? 'text';
     const path = GcsService.pathParser(localPath);
     const content = await GcsService.loadFile({
       path: path.path,
       bucket: path.bucket,
-      format: options?.format ?? 'text'
+      format: format
     });
     if (content === null || typeof content === 'undefined') {
       throw 'File Loading Error';
     }
+
+    if (format === 'text') {
+      if (typeof content === 'object') {
+        try {
+          fileContent = JSON.stringify(content, null, 2);
+        } catch (e) {
+          console.error('Failed to stringify content as JSON:', e);
+          fileContent = String(content);
+        }
+      } else {
+        fileContent = String(content);
+      }
+    } else {
+      fileContent = content;
+    }
+    
     return {
       type: FILE,
       path: localPath,
       name: localPath.split('\\').at(-1) ?? '',
       format: options?.format ?? 'text',
-      content: content,
+      content: fileContent,
       created: new Date().toISOString(),
       writable: true,
       last_modified: new Date().toISOString(),

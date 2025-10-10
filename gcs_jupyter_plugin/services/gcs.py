@@ -19,13 +19,14 @@ from datetime import timedelta
 import pathlib
 import nbformat
 import re
+import io
 
 import tornado.web
 
 from google.oauth2 import credentials
 from google.cloud import storage
 
-from gcs_jupyter_plugin.commons.constants import CONTENT_TYPE, STORAGE_SERVICE_NAME
+from gcs_jupyter_plugin.commons.constants import CONTENT_TYPE, STORAGE_SERVICE_NAME, BINARY_ENCODING_EXTENSIONS, MIMETYPE_MAP
 
 
 class Client(tornado.web.RequestHandler):
@@ -222,18 +223,28 @@ class Client(tornado.web.RequestHandler):
             Dictionary with metadata or error information
         """
         try:
-            # Ensure content is in string format if it's not already
-            processed_content = content
+            bytes_content = None
+
             if isinstance(content, bytes):
-                processed_content = content
-            elif isinstance(content, dict):
-                processed_content = json.dumps(content)
+                bytes_content = content
             elif isinstance(content, str) and content.startswith("data:"):
                 data_url_match = re.match(r"data:([^;]+);base64,(.*)", content)
                 if data_url_match:
                     base64_data = data_url_match.group(2)
-                    processed_content = base64.b64decode(base64_data)
+                    bytes_content = base64.b64decode(base64_data)
+                else:
+                    raise ValueError("Invalid base64 data URL format")
+            elif isinstance(content, dict):
+                bytes_content = json.dumps(content).encode("utf-8")
+            elif isinstance(content, str):
+                if destination_blob_name.lower().endswith(BINARY_ENCODING_EXTENSIONS):
+                    bytes_content = content.encode("latin1")
+                else:
+                    bytes_content = content.encode("utf-8")
+            else:
+                raise ValueError(f"Unsupported content type: {type(content)}")
 
+            # Initialize GCS client
             token = self._access_token
             project = self.project_id
             creds = credentials.Credentials(token)
@@ -241,9 +252,8 @@ class Client(tornado.web.RequestHandler):
             bucket = storage_client.bucket(bucket_name)
             blob = bucket.blob(destination_blob_name)
 
-            if (
-                blob.exists() and upload_flag
-            ):  # when uploadFlag false, user is peroforming save. So file should present.
+            # Conflict check
+            if blob.exists() and upload_flag:
                 return {
                     "name": destination_blob_name,
                     "bucket": bucket_name,
@@ -253,30 +263,26 @@ class Client(tornado.web.RequestHandler):
                     "status": 409,  # Conflict
                 }
 
-            blob.upload_from_string(
-                processed_content,
-                content_type="media",
-            )
+            # Determine content type
+            file_ext = pathlib.Path(destination_blob_name.lower()).suffix
+            content_type = MIMETYPE_MAP.get(file_ext, "application/octet-stream")
+
+            # Upload to GCS
+            file_obj = io.BytesIO(bytes_content)
+            blob.upload_from_file(file_obj, content_type=content_type)
 
             return {
                 "name": destination_blob_name,
                 "bucket": bucket_name,
                 "size": blob.size,
                 "contentType": blob.content_type,
-                "timeCreated": (
-                    blob.time_created.isoformat() if blob.time_created else ""
-                ),
+                "timeCreated": blob.time_created.isoformat() if blob.time_created else "",
                 "updated": blob.updated.isoformat() if blob.updated else "",
                 "success": True,
             }
 
         except Exception as e:
-            if upload_flag:
-                self.log.exception(
-                    f"Error uploading content to {destination_blob_name}."
-                )
-            else:
-                self.log.exception(f"Error saving content to {destination_blob_name}.")
+            self.log.exception(f"Error uploading content to {destination_blob_name}.")
             return {"error": str(e), "status": 500}
 
     async def delete_file(self, bucket, path):
