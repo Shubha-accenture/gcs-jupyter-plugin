@@ -14,22 +14,10 @@
 from google.cloud import jupyter_config
 
 from gcs_jupyter_plugin.commons.constants import (
-    STORAGE_SERVICE_DEFAULT_URL,
-    STORAGE_SERVICE_NAME,
+    STORAGE_SERVICE_DEFAULT_URL
 )
 
-
-async def map():
-    storage_url = await gcp_service_url(
-        STORAGE_SERVICE_NAME, default_url=STORAGE_SERVICE_DEFAULT_URL
-    )
-    url_map = {
-        "storage_url": storage_url,
-    }
-    return url_map
-
-
-async def gcp_service_url(service_name, default_url=None):
+async def gcp_service_url(service_name, default_url=STORAGE_SERVICE_DEFAULT_URL):
     default_url = default_url or f"https://{service_name}.googleapis.com/"
     configured_url = await jupyter_config.async_get_gcloud_config(
         f"configuration.properties.api_endpoint_overrides.{service_name}"
