@@ -20,6 +20,7 @@ import pathlib
 import nbformat
 import re
 import io
+import functools
 
 import tornado.web
 
@@ -29,6 +30,14 @@ from google.api_core.client_options import ClientOptions
 
 from gcs_jupyter_plugin.commons.constants import CONTENT_TYPE, STORAGE_SERVICE_NAME, BINARY_ENCODING_EXTENSIONS, MIMETYPE_MAP
 from gcs_jupyter_plugin import urls
+
+def ensure_client_setup(func):
+    @functools.wraps(func)
+    async def wrapper(self, *args, **kwargs):
+        if self.storage_client is None:
+            await self.setup()
+        return await func(self, *args, **kwargs)
+    return wrapper
 
 class Client(tornado.web.RequestHandler):
     def __init__(self, credentials, log, client_session):
@@ -56,13 +65,12 @@ class Client(tornado.web.RequestHandler):
         self.storage_client = storage.Client(
             project=project,
             credentials=creds,
-            client_options={'api_endpoint': storage_url}
+            client_options=ClientOptions(api_endpoint=storage_url)
         )
 
+    @ensure_client_setup
     async def list_buckets(self, prefix=None):
         try:
-            if self.storage_client is None:
-                await self.setup()
             bucket_list = []
             loop = asyncio.get_running_loop()
             
@@ -91,6 +99,7 @@ class Client(tornado.web.RequestHandler):
             return {"error": str(e)}
 
     # gcs -- list files implementation
+    @ensure_client_setup
     async def list_files(self, bucket, prefix):
         try:
             result = {}
@@ -98,8 +107,6 @@ class Client(tornado.web.RequestHandler):
             subdir_list = []
             loop = asyncio.get_running_loop()
 
-            if self.storage_client is None:
-                await self.setup()
             def _get_blobs_from_gcs():
                 return self.storage_client.list_blobs(
                     bucket,
@@ -146,10 +153,9 @@ class Client(tornado.web.RequestHandler):
             self.log.exception(f"Error listing files: {e}")
             return []  # Return empty list on error.
 
+    @ensure_client_setup
     async def get_file(self, bucket_name, file_path, format):
         try:
-            if self.storage_client is None:
-                await self.setup()
             bucket = self.storage_client.bucket(bucket_name)
             blob = bucket.blob(file_path)
 
@@ -175,10 +181,9 @@ class Client(tornado.web.RequestHandler):
         except Exception as e:
             raise e
 
+    @ensure_client_setup
     async def create_folder(self, bucket, path, folder_name):
         try:
-            if self.storage_client is None:
-                await self.setup()
             # Format the folder path
             new_folder_path = str(pathlib.PosixPath(path).joinpath(folder_name)) + "/"
 
@@ -215,6 +220,7 @@ class Client(tornado.web.RequestHandler):
             self.log.exception("Error creating folder.")
             return {"error": str(e)}
 
+    @ensure_client_setup
     async def save_content(
         self, bucket_name, destination_blob_name, content, upload_flag
     ):
@@ -230,8 +236,6 @@ class Client(tornado.web.RequestHandler):
             Dictionary with metadata or error information
         """
         try:
-            if self.storage_client is None:
-                await self.setup()
             bytes_content = None
 
             if isinstance(content, bytes):
@@ -289,10 +293,9 @@ class Client(tornado.web.RequestHandler):
             self.log.exception(f"Error uploading content to {destination_blob_name}.")
             return {"error": str(e), "status": 500}
 
+    @ensure_client_setup
     async def delete_file(self, bucket, path):
         try:
-            if self.storage_client is None:
-                await self.setup()
             # Get the bucket
             bucket_obj = self.storage_client.bucket(bucket)
 
@@ -374,14 +377,13 @@ class Client(tornado.web.RequestHandler):
             self.log.exception(f"Error deleting file {path}.")
             return {"error": str(e), "status": 500}
 
+    @ensure_client_setup
     async def rename_file(self, bucket_name, blob_name, new_name):
         """
         Renames a blob using the rename_blob method.
         Note: This only works within the same bucket.
         """
         try:
-            if self.storage_client is None:
-                await self.setup()
             # Get the bucket and blob
             bucket = self.storage_client.bucket(bucket_name)
             blob = bucket.blob(blob_name)
@@ -549,6 +551,7 @@ class Client(tornado.web.RequestHandler):
                 "status": 500,
             }
 
+    @ensure_client_setup
     async def copy_file(
         self, source_bucket_name, source_path, destination_bucket_name, destination_path
     ):
@@ -556,8 +559,6 @@ class Client(tornado.web.RequestHandler):
         Can also copy a folder (all blobs with a given prefix).
         """
         try:
-            if self.storage_client is None:
-                await self.setup()
             source_bucket = self.storage_client.bucket(source_bucket_name)
             destination_bucket = self.storage_client.bucket(destination_bucket_name)
 
@@ -748,10 +749,9 @@ class Client(tornado.web.RequestHandler):
             )
             return {"error": str(e), "status": 500}
 
+    @ensure_client_setup
     async def download_file(self, bucket_name, file_path, name, format):
         try:
-            if self.storage_client is None:
-                await self.setup()
             bucket = self.storage_client.bucket(bucket_name)
             blob = bucket.blob(file_path)
 
