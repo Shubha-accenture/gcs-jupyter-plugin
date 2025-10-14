@@ -20,14 +20,24 @@ import pathlib
 import nbformat
 import re
 import io
+import functools
 
 import tornado.web
 
 from google.oauth2 import credentials
 from google.cloud import storage
+from google.api_core.client_options import ClientOptions
 
 from gcs_jupyter_plugin.commons.constants import CONTENT_TYPE, STORAGE_SERVICE_NAME, BINARY_ENCODING_EXTENSIONS, MIMETYPE_MAP
+from gcs_jupyter_plugin import urls
 
+def ensure_client_setup(func):
+    @functools.wraps(func)
+    async def wrapper(self, *args, **kwargs):
+        if self.storage_client is None:
+            await self.setup()
+        return await func(self, *args, **kwargs)
+    return wrapper
 
 class Client(tornado.web.RequestHandler):
     def __init__(self, credentials, log, client_session):
@@ -43,19 +53,32 @@ class Client(tornado.web.RequestHandler):
         self.project_id = credentials["project_id"]
         self.region_id = credentials["region_id"]
         self.client_session = client_session
+        self.storage_client = None
+    
+    async def setup(self):
+        """Asynchronously initializes the GCS client."""
+        token = self._access_token
+        project = self.project_id
+        creds = credentials.Credentials(token)
+        
+        storage_url = await urls.gcp_service_url(STORAGE_SERVICE_NAME) 
+        self.storage_client = storage.Client(
+            project=project,
+            credentials=creds,
+            client_options=ClientOptions(api_endpoint=storage_url)
+        )
 
+    @ensure_client_setup
     async def list_buckets(self, prefix=None):
         try:
             bucket_list = []
-            token = self._access_token
-            project = self.project_id
-            creds = credentials.Credentials(token)
-
             loop = asyncio.get_running_loop()
-
+            
             def _get_buckets_from_gcs():
-                client = storage.Client(project=project, credentials=creds)
-                return client.list_buckets(prefix=prefix)
+                # this log just to knnow what api_endpoint is picked
+                # Keeping this since positive testing is not done yet. 
+                self.log.info(f"client initiated with endpoint: {self.storage_client._connection.API_BASE_URL}")
+                return self.storage_client.list_buckets(prefix=prefix)
 
             buckets = await loop.run_in_executor(None, _get_buckets_from_gcs)
 
@@ -76,20 +99,16 @@ class Client(tornado.web.RequestHandler):
             return {"error": str(e)}
 
     # gcs -- list files implementation
+    @ensure_client_setup
     async def list_files(self, bucket, prefix):
         try:
             result = {}
             file_list = []
             subdir_list = []
-            token = self._access_token
-            project = self.project_id
-            creds = credentials.Credentials(token)
-
             loop = asyncio.get_running_loop()
 
             def _get_blobs_from_gcs():
-                client = storage.Client(project=project, credentials=creds)
-                return client.list_blobs(
+                return self.storage_client.list_blobs(
                     bucket,
                     prefix=prefix,
                     delimiter="/",
@@ -134,13 +153,10 @@ class Client(tornado.web.RequestHandler):
             self.log.exception(f"Error listing files: {e}")
             return []  # Return empty list on error.
 
+    @ensure_client_setup
     async def get_file(self, bucket_name, file_path, format):
         try:
-            token = self._access_token
-            project = self.project_id
-            creds = credentials.Credentials(token)
-            client = storage.Client(project=project, credentials=creds)
-            bucket = client.bucket(bucket_name)
+            bucket = self.storage_client.bucket(bucket_name)
             blob = bucket.blob(file_path)
 
             if format == "base64":
@@ -165,20 +181,16 @@ class Client(tornado.web.RequestHandler):
         except Exception as e:
             raise e
 
+    @ensure_client_setup
     async def create_folder(self, bucket, path, folder_name):
         try:
-            token = self._access_token
-            project = self.project_id
-            creds = credentials.Credentials(token)
-            client = storage.Client(project=project, credentials=creds)
-
             # Format the folder path
             new_folder_path = str(pathlib.PosixPath(path).joinpath(folder_name)) + "/"
 
             self.log.info(f"Creating folder at: {new_folder_path}")
 
             # Get the bucket
-            bucket_obj = client.bucket(bucket)
+            bucket_obj = self.storage_client.bucket(bucket)
             # Create an empty blob with a trailing slash to indicate a folder
             blob = bucket_obj.blob(new_folder_path)
             # Upload empty content to create the folder
@@ -208,6 +220,7 @@ class Client(tornado.web.RequestHandler):
             self.log.exception("Error creating folder.")
             return {"error": str(e)}
 
+    @ensure_client_setup
     async def save_content(
         self, bucket_name, destination_blob_name, content, upload_flag
     ):
@@ -244,12 +257,7 @@ class Client(tornado.web.RequestHandler):
             else:
                 raise ValueError(f"Unsupported content type: {type(content)}")
 
-            # Initialize GCS client
-            token = self._access_token
-            project = self.project_id
-            creds = credentials.Credentials(token)
-            storage_client = storage.Client(project=project, credentials=creds)
-            bucket = storage_client.bucket(bucket_name)
+            bucket = self.storage_client.bucket(bucket_name)
             blob = bucket.blob(destination_blob_name)
 
             # Conflict check
@@ -285,15 +293,11 @@ class Client(tornado.web.RequestHandler):
             self.log.exception(f"Error uploading content to {destination_blob_name}.")
             return {"error": str(e), "status": 500}
 
+    @ensure_client_setup
     async def delete_file(self, bucket, path):
         try:
-            token = self._access_token
-            project = self.project_id
-            creds = credentials.Credentials(token)
-            client = storage.Client(project=project, credentials=creds)
-
             # Get the bucket
-            bucket_obj = client.bucket(bucket)
+            bucket_obj = self.storage_client.bucket(bucket)
 
             # Check if it's a folder/bucket deletion attempt
             if path == "" or path == "/":
@@ -373,19 +377,15 @@ class Client(tornado.web.RequestHandler):
             self.log.exception(f"Error deleting file {path}.")
             return {"error": str(e), "status": 500}
 
+    @ensure_client_setup
     async def rename_file(self, bucket_name, blob_name, new_name):
         """
         Renames a blob using the rename_blob method.
         Note: This only works within the same bucket.
         """
         try:
-            token = self._access_token
-            project = self.project_id
-            creds = credentials.Credentials(token)
-            storage_client = storage.Client(project=project, credentials=creds)
-
             # Get the bucket and blob
-            bucket = storage_client.bucket(bucket_name)
+            bucket = self.storage_client.bucket(bucket_name)
             blob = bucket.blob(blob_name)
             # Check if source blob exists
             is_file = True
@@ -551,6 +551,7 @@ class Client(tornado.web.RequestHandler):
                 "status": 500,
             }
 
+    @ensure_client_setup
     async def copy_file(
         self, source_bucket_name, source_path, destination_bucket_name, destination_path
     ):
@@ -558,13 +559,8 @@ class Client(tornado.web.RequestHandler):
         Can also copy a folder (all blobs with a given prefix).
         """
         try:
-            token = self._access_token
-            project = self.project_id
-            creds = credentials.Credentials(token)
-            storage_client = storage.Client(project=project, credentials=creds)
-
-            source_bucket = storage_client.bucket(source_bucket_name)
-            destination_bucket = storage_client.bucket(destination_bucket_name)
+            source_bucket = self.storage_client.bucket(source_bucket_name)
+            destination_bucket = self.storage_client.bucket(destination_bucket_name)
 
             if destination_path.startswith("/"):
                 destination_path = destination_path[1:]
@@ -753,13 +749,10 @@ class Client(tornado.web.RequestHandler):
             )
             return {"error": str(e), "status": 500}
 
+    @ensure_client_setup
     async def download_file(self, bucket_name, file_path, name, format):
         try:
-            token = self._access_token
-            project = self.project_id
-            creds = credentials.Credentials(token)
-            client = storage.Client(project=project, credentials=creds)
-            bucket = client.bucket(bucket_name)
+            bucket = self.storage_client.bucket(bucket_name)
             blob = bucket.blob(file_path)
 
             return blob.download_as_bytes()
