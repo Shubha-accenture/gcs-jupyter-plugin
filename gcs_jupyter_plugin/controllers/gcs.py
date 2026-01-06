@@ -24,16 +24,38 @@ from gcs_jupyter_plugin.commons.constants import (
     MISSING_REQUIRED_PARAMETERS_ERROR_MESSAGE,
 )
 
-
-class ListBucketsController(APIHandler):
+class ProjectsListController(APIHandler):
     @tornado.web.authenticated
     async def get(self):
+        """Returns projects list"""
         try:
             async with aiohttp.ClientSession() as client_session:
                 client = gcs.Client(
                     await credentials.get_cached(), self.log, client_session
                 )
-                buckets = await client.list_buckets()
+            projects = await client.list_gcp_projects()
+            self.finish(json.dumps(projects))
+        except RuntimeError as e:
+            error_data = e.args[0]
+            status_code = error_data.get("status", 500)
+
+            self.log.exception(f"Error fetching projects: {str(e)}")
+            self.set_status(status_code)
+            self.finish(json.dumps(error_data))
+        except Exception as e:
+            self.log.exception(f"Error fetching projects: {str(e)}")
+            self.finish({"error": str(e)})
+
+class ListBucketsController(APIHandler):
+    @tornado.web.authenticated
+    async def get(self):
+        try:
+            project = self.get_argument("project_id")
+            async with aiohttp.ClientSession() as client_session:
+                client = gcs.Client(
+                    await credentials.get_cached(), self.log, client_session
+                )
+                buckets = await client.list_buckets(project=project)
             result = json.dumps(buckets)
             self.finish(result)
         except Exception as e:

@@ -20,7 +20,12 @@ import { ISignal, Signal } from '@lumino/signaling';
 import { GcsService } from './gcsService';
 
 import 'react-toastify/dist/ReactToastify.css';
-import { showDialog, Dialog, Spinner } from '@jupyterlab/apputils';
+import {
+  showDialog,
+  Dialog,
+  Spinner,
+  Notification
+} from '@jupyterlab/apputils';
 import mime from 'mime-types';
 
 import { JupyterFrontEnd } from '@jupyterlab/application';
@@ -28,6 +33,7 @@ import { GcsBrowserWidget } from './gcsBrowserWidget';
 import {
   DELETE_SIGNAL,
   DIRECTORY,
+  ERROR_TEXT_INACCESSBILE_PROJECT,
   FILE,
   GCS_PLUGIN_TITLE,
   NOTEBOOK,
@@ -169,13 +175,24 @@ export class GCSDrive implements Contents.IDrive {
     /**
      * Logic here is kind of complicated, we have 3 cases that
      * the IDrive interface uses this call for.
-     * 1) If path is the root node, list the buckets
-     * 2) If path is a directory in a bucket, list all of it's directory and files.
-     * 3) If path is a file, return it's metadata and contents.
+     * 1) If path is the root node, list the projects
+     * 2) If path is a bucket, list all buckets in the project.
+     * 3) If path is a directory in a bucket, list all of it's directory and files.
+     * 4) If path is a file, return it's metadata and contents.
      */
-    if (localPath.length === 0) {
-      // Case 1: Return the buckets.
-      return await this.getBuckets();
+    const cleanPath = localPath.replace(/^\/+|\/+$/g, '');
+
+    if (cleanPath.length === 0 || cleanPath === '/') {
+      // Return the projects.
+      return await this.getProjects();
+    }
+
+    const pathFragment = localPath.split('/');
+
+    if (pathFragment.length === 1) {
+      const projectId = pathFragment[0];
+
+      return await this.getBuckets(projectId);
     }
 
     const request: Contents.IFetchOptions = options || {};
@@ -187,25 +204,65 @@ export class GCSDrive implements Contents.IDrive {
     }
   }
 
-  /**
-   * @returns IModel directory containing all the GCS buckets for the current project.
+  /** Collects project list
+   * @returns IModel directory containing all the GCS projectlist
    */
-  private async getBuckets() {
-    const content = await GcsService.listBuckets();
+  private async getProjects() {
+    const content = await GcsService.getProjectsList();
 
     if (!content) {
-      throw new Error(`Error Listing Buckets ${content}`);
+      throw new Error(`Error Listing Projects ${content}`);
     }
     return {
       ...DIRECTORY_IMODEL,
       content:
-        content.map((bucket: { items: { name: string; updated: string } }) => ({
-          ...DIRECTORY_IMODEL,
-          path: bucket.items.name,
-          name: bucket.items.name,
-          last_modified: bucket.items.updated ?? new Date().toISOString()
-        })) ?? []
+        content.map((project: { name: string; project_id: string }) => {
+          const displayName =
+            project.name && project.name.trim() !== ''
+              ? project.name
+              : project.project_id;
+          return {
+            ...DIRECTORY_IMODEL,
+            path: project.project_id,
+            name: displayName
+          };
+        }) ?? []
     };
+  }
+
+  /**
+   * @returns IModel directory containing all the GCS buckets for the current project.
+   */
+  private async getBuckets(projectId: string) {
+    try {
+      const content = await GcsService.listBuckets(projectId);
+
+      if (!content) {
+        throw new Error(`Error Listing Buckets ${content}`);
+      }
+      return {
+        ...DIRECTORY_IMODEL,
+        path: projectId,
+        name: projectId,
+        content:
+          content.map(
+            (bucket: { items: { name: string; updated: string } }) => ({
+              ...DIRECTORY_IMODEL,
+              path: `${projectId}/${bucket.items.name}`,
+              name: bucket.items.name,
+              last_modified: bucket.items.updated ?? new Date().toISOString()
+            })
+          ) ?? []
+      };
+    } catch (error: any) {
+      Notification.error(
+        `${ERROR_TEXT_INACCESSBILE_PROJECT} "${projectId}"`,
+
+        { autoClose: false }
+      );
+
+      throw error;
+    }
   }
 
   /**
@@ -213,7 +270,12 @@ export class GCSDrive implements Contents.IDrive {
    */
   private async getDirectory(localPath: string) {
     const path = GcsService.pathParser(localPath);
-    const prefix = path.path.length > 0 ? `${path.path}/` : path.path;
+    const prefix = path.path.length > 0 ? `${path.path}/` : '';
+
+    if (!path.bucket) {
+      throw new Error('Invalid directory path: Missing bucket name');
+    }
+
     const content = await GcsService.listFiles({
       prefix: prefix,
       bucket: path.bucket
@@ -228,7 +290,7 @@ export class GCSDrive implements Contents.IDrive {
         content.prefixes.map((item: { prefixes: { name: string } }) => {
           const pref = item.prefixes.name;
           const path = pref.split('/');
-          const name = path.at(-2) ?? prefix;
+          const name = path[path.length - 2];
           return {
             ...DIRECTORY_IMODEL,
             path: `${localPath}/${name}`,
@@ -313,7 +375,7 @@ export class GCSDrive implements Contents.IDrive {
     } else {
       fileContent = content;
     }
-    
+
     return {
       type: FILE,
       path: localPath,

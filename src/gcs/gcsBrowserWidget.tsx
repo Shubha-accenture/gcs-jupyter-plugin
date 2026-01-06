@@ -334,7 +334,7 @@ export class GcsBrowserWidget extends Widget {
         };
 
         reader.readAsDataURL(file); // Read as Data URL for binary files
-        
+
         this.hideProgressBar();
       });
     }
@@ -469,7 +469,12 @@ export class GcsBrowserWidget extends Widget {
 
     const currentPath = this._browser.model.path.split(':')[1];
     // Check if the current path is the root (empty string or just '/')
-    const isRootPath = currentPath === '' || currentPath === '/';
+    const pathSegments = currentPath
+      .split('/')
+      .filter(segment => segment.length > 0);
+
+    const isRootPath =
+      currentPath === '' || currentPath === '/' || pathSegments.length <= 1;
 
     // Freeze upload button if path is root
     if (this.gcsUpload) {

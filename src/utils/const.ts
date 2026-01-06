@@ -32,6 +32,7 @@ export const CREDENTIAL_ENDPOINT = 'credentials';
 export const LOG_ENDPOINT = 'log';
 export const LOGIN_ENDPOINT = 'login';
 export const HEALTH_ENDPOINT = 'health';
+export const PROJECT_LIST_ENDPOINT = 'api/storage/projectList';
 export const LIST_BUCKETS_ENDPOINT = 'api/storage/listBuckets';
 export const LIST_FILES_ENDPOINT = 'api/storage/listFiles';
 export const LOAD_FILE_ENDPOINT = 'api/storage/loadFile';
@@ -65,3 +66,6 @@ export const UNTITLED_NOTEBOOK_EXT = '.ipynb';
 /** Jupyter signals */
 export const DELETE_SIGNAL = 'delete';
 export const RENAME_SIGNAL = 'rename';
+
+export const ERROR_TEXT_INACCESSBILE_PROJECT =
+  'You do not have permission to access project';

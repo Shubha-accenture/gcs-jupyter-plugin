@@ -24,6 +24,7 @@ import {
   LIST_BUCKETS_ENDPOINT,
   LIST_FILES_ENDPOINT,
   LOAD_FILE_ENDPOINT,
+  PROJECT_LIST_ENDPOINT,
   RENAME_ENDPOINT,
   SAVE_ENDPOINT
 } from '../utils/const';
@@ -42,28 +43,49 @@ export class GcsService {
    * @param localPath The absolute Jupyter file path
    * @returns Object containing the GCS bucket and object ID
    */
+
   static pathParser(localPath: string) {
-    const matches = /^(?<bucket>[\w\-\_\.]+)\/?(?<path>.*)/.exec(
-      localPath
-    )?.groups;
-    if (!matches) {
-      throw new Error('Invalid Path');
+    // Trim forward slashes from both the beginning and the end of a string.
+    const cleanPath = localPath.replace(/^\/+|\/+$/g, '');
+
+    if (!cleanPath) {
+      return { project: '', bucket: '', path: '', name: '' };
     }
-    const path = matches['path'];
+
+    const parts = cleanPath.split('/');
+
+    const project = parts[0];
+    const bucket = parts.length > 1 ? parts[1] : '';
+    const path = parts.length > 2 ? parts.slice(2).join('/') : '';
+
     return {
+      project: project,
+      bucket: bucket,
       path: path,
-      bucket: matches['bucket'],
-      name: path.split('/').at(-1)
+      name: parts.at(-1) || ''
     };
+  }
+
+  /**
+   * List projects available to the user
+   */
+  static async getProjectsList() {
+    try {
+      const data = (await requestAPI(PROJECT_LIST_ENDPOINT)) as any;
+      return data;
+    } catch (error: any) {
+      console.error(error?.message ?? 'Error fetching Projects List');
+    }
   }
 
   /**
    * Thin wrapper around storage.bucket.list
    * @see https://cloud.google.com/storage/docs/listing-buckets#rest-list-buckets
    */
-  static async listBuckets() {
+  static async listBuckets(projectId: string) {
     try {
-      const data = (await requestAPI(LIST_BUCKETS_ENDPOINT)) as any;
+      const listBucketUrl = `${LIST_BUCKETS_ENDPOINT}?project_id=${encodeURIComponent(projectId)}`;
+      const data = (await requestAPI(listBucketUrl)) as any;
       return data;
     } catch (error: any) {
       console.error(error?.message ?? 'Error fetching Buckets');
