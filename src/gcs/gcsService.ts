@@ -71,10 +71,15 @@ export class GcsService {
       const data = (await requestAPI(
         `${SET_PROJECT_ENDPOINT}?project_id=${encodeURIComponent(projectID)}`
       )) as any;
+      // If requestAPI doesn't automatically throw on 403/400, handle it here:
+      if (data && (data as any).error) {
+        throw new Error((data as any).error);
+      }
       this._currentProjectId = projectID;
       return data;
     } catch (error: any) {
       console.error(error?.message ?? 'Error fetching Projects List');
+      throw error;
     }
   }
 
@@ -106,6 +111,7 @@ export class GcsService {
       return data;
     } catch (error: any) {
       console.error(error?.message ?? 'Error fetching Buckets');
+      return { error: error.message || 'Network error' };
     }
   }
 

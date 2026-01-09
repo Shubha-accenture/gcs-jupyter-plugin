@@ -72,6 +72,7 @@ export class GcsBrowserWidget extends Widget {
   private _projectSearchWrapper: ProjectSearchWrapper | null = null;
   private _projects: Array<{ projectId: string; displayName: string }> = [];
   private _currentProjectId: string = '';
+  private _defaultProjectId: string = '';
 
   private readonly _browser: FileBrowser;
 
@@ -374,6 +375,10 @@ export class GcsBrowserWidget extends Widget {
       this._projectSearchWrapper.dispose();
     }
 
+    if (!this.isAttached) {
+      return;
+    }
+
     this._projectSearchWrapper = new ProjectSearchWrapper({
       projects: this._projects,
       currentProject: this._currentProjectId,
@@ -394,6 +399,10 @@ export class GcsBrowserWidget extends Widget {
         !credentials.login_error &&
         !credentials.config_error
       ) {
+        // Store the default for fallback purposes
+        this._defaultProjectId = credentials.project_id || '';
+
+        this.showProgressBar();
         const projects = await GcsService.getProjectsList();
 
         // Map backend keys (project_id) to React keys (projectId)
@@ -402,19 +411,23 @@ export class GcsBrowserWidget extends Widget {
           displayName: p.name
         }));
 
+        this.hideProgressBar();
         if (this._projects.length > 0) {
           // this._currentProjectId = credentials.project_id || '';
           this.renderProjectSearch();
-
-          if (credentials.project_id) {
-            const match = this._projects.find(
-              p => p.projectId === credentials.project_id
-            );
-            await this.selectProject(
-              credentials.project_id,
-              match?.displayName
-            );
+          const initialId = this._currentProjectId || this._defaultProjectId;
+          if (initialId) {
+            await this.selectProject(initialId);
           }
+          // if (credentials.project_id) {
+          //   const match = this._projects.find(
+          //     p => p.projectId === credentials.project_id
+          //   );
+          //   await this.selectProject(
+          //     credentials.project_id,
+          //     match?.displayName
+          //   );
+          // }
         } else {
           // If no project is selected yet, ensure browser is at root and clear
           // This prevents the browser from trying to load buckets for a "null" project
@@ -459,6 +472,7 @@ export class GcsBrowserWidget extends Widget {
         }
       }
     } catch (error) {
+      this.hideProgressBar();
       console.error('Error during initialization:', error);
     }
   }
@@ -559,9 +573,45 @@ export class GcsBrowserWidget extends Widget {
 
     try {
       this.showProgressBar();
-      await GcsService.setProject(projectId);
-      await this._browser.model.cd('/');
+
+      await GcsService.setProject('');
       await this._browser.model.refresh();
+
+      await GcsService.setProject(projectId);
+
+      // 3. EXPLICIT VALIDATION: Call listBuckets directly here
+      // This ensures that if there's a permission error, we catch it NOW.
+      const testBuckets = await GcsService.listBuckets();
+
+      // Check if the service returned an error object
+      if (testBuckets && testBuckets.error) {
+        throw new Error(testBuckets.error);
+      }
+
+      await this._browser.model.cd('/');
+
+      await this._browser.model.refresh();
+    } catch (e) {
+      console.error('Error selecting project:', e);
+      // 3. Fallback logic
+      // Revert UI variable
+      this._currentProjectId = this._defaultProjectId;
+      this.renderProjectSearch();
+
+      showDialog({
+        title: 'Access Denied',
+        body: `You do not have permission to access project "${projectId}". Reverting to your default project: ${this._defaultProjectId}.`,
+        buttons: [Dialog.okButton()]
+      });
+
+      // 4. Reload the default project
+      try {
+        await GcsService.setProject(this._defaultProjectId);
+        await this._browser.model.cd('/');
+        await this._browser.model.refresh();
+      } catch (fallbackError) {
+        console.error('Even default project failed:', fallbackError);
+      }
     } finally {
       this.hideProgressBar();
     }

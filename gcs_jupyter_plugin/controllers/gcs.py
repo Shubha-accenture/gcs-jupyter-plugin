@@ -80,10 +80,21 @@ class ListBucketsController(APIHandler):
                     await credentials.get_cached(), self.log, client_session, Credentials.project_id
                 )
                 buckets = await client.list_buckets()
-            result = json.dumps(buckets)
-            self.finish(result)
+            # Check if the service returned an error object (e.g., 403 Forbidden)
+            if isinstance(buckets, dict) and "error" in buckets:
+                # Extract the message. GCS errors often contain "403" or "access denied"
+                error_msg = buckets.get("error", "")
+                if "403" in error_msg or "denied" in error_msg.lower():
+                    self.set_status(403)
+                else:
+                    self.set_status(500)
+                self.finish(json.dumps(buckets))
+                return
+
+            self.finish(json.dumps(buckets))
         except Exception as e:
             self.log.exception("Error fetching datasets.")
+            self.set_status(500)
             self.finish({"error": str(e)})
 
 

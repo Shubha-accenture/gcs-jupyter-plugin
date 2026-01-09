@@ -180,6 +180,20 @@ export class GCSDrive implements Contents.IDrive {
 
     const cleanPath = localPath.replace(/^\//, '');
 
+    if (cleanPath.length === 0 && !GcsService.getCurrentProject()) {
+      return {
+        type: 'directory',
+        path: '',
+        name: '',
+        format: null,
+        content: [], // Return empty content so the browser
+        created: '',
+        writable: false,
+        last_modified: '',
+        mimetype: ''
+      };
+    }
+
     if (cleanPath.length === 0) {
       // This triggers GcsService.listBuckets()
       return await this.getBuckets();
@@ -210,6 +224,10 @@ export class GCSDrive implements Contents.IDrive {
     }
 
     const content = await GcsService.listBuckets();
+
+    if (content && content.error) {
+      throw new Error(content.error); // This "jumps" to the catch block in selectProject
+    }
 
     if (!content) {
       throw new Error(`Error Listing Buckets ${content}`);

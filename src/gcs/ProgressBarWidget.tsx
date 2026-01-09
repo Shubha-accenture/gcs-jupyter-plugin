@@ -22,7 +22,7 @@ const IndeterminateProgressBarComponent: React.FC = () => {
   return (
     <div
       style={{
-        height: '1px',
+        height: '3px',
         backgroundColor: 'rgba(5, 114, 206, 0.2)',
         width: '100%',
         overflow: 'hidden',
