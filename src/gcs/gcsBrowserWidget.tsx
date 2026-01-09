@@ -170,6 +170,8 @@ export class GcsBrowserWidget extends Widget {
 
   protected onAfterAttach(msg: Message): void {
     super.onAfterAttach(msg);
+    this.renderProjectSearch();
+
     // Call initialize asynchronously after widget is attached
     void this.initialize();
   }
