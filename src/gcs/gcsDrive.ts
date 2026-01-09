@@ -173,12 +173,20 @@ export class GCSDrive implements Contents.IDrive {
      * 2) If path is a directory in a bucket, list all of it's directory and files.
      * 3) If path is a file, return it's metadata and contents.
      */
-    if (localPath.length === 0) {
-      // Case 1: Return the buckets.
+    // if (localPath.length === 0 || localPath === '/') {
+    //   // Case 1: Return the buckets.
+    //   return await this.getBuckets();
+    // }
+
+    const cleanPath = localPath.replace(/^\//, '');
+
+    if (cleanPath.length === 0) {
+      // This triggers GcsService.listBuckets()
       return await this.getBuckets();
     }
 
     const request: Contents.IFetchOptions = options || {};
+    console.log('request type', request.type);
 
     if (request.type === FILE || request.type === NOTEBOOK) {
       return await this.getFile(localPath, options);
@@ -191,6 +199,16 @@ export class GCSDrive implements Contents.IDrive {
    * @returns IModel directory containing all the GCS buckets for the current project.
    */
   private async getBuckets() {
+    const currentProject = GcsService.getCurrentProject();
+    if (!currentProject) {
+      return {
+        ...DIRECTORY_IMODEL,
+        path: '',
+        name: '',
+        content: []
+      };
+    }
+
     const content = await GcsService.listBuckets();
 
     if (!content) {
@@ -198,6 +216,8 @@ export class GCSDrive implements Contents.IDrive {
     }
     return {
       ...DIRECTORY_IMODEL,
+      path: '',
+      name: '',
       content:
         content.map((bucket: { items: { name: string; updated: string } }) => ({
           ...DIRECTORY_IMODEL,
@@ -313,7 +333,7 @@ export class GCSDrive implements Contents.IDrive {
     } else {
       fileContent = content;
     }
-    
+
     return {
       type: FILE,
       path: localPath,

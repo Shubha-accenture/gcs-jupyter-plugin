@@ -27,6 +27,9 @@ import tornado.web
 from google.oauth2 import credentials
 from google.cloud import storage
 from google.api_core.client_options import ClientOptions
+from google.cloud import resourcemanager_v3
+from google.auth.exceptions import RefreshError
+import google.oauth2.credentials as oauth2
 
 from gcs_jupyter_plugin.commons.constants import CONTENT_TYPE, STORAGE_SERVICE_NAME, BINARY_ENCODING_EXTENSIONS, MIMETYPE_MAP
 from gcs_jupyter_plugin import urls
@@ -38,9 +41,8 @@ def ensure_client_setup(func):
             await self.setup()
         return await func(self, *args, **kwargs)
     return wrapper
-
 class Client(tornado.web.RequestHandler):
-    def __init__(self, credentials, log, client_session):
+    def __init__(self, credentials, log, client_session, project_id=None):
         self.log = log
         if not (
             ("access_token" in credentials)
@@ -50,7 +52,7 @@ class Client(tornado.web.RequestHandler):
             self.log.exception("Missing required credentials")
             raise ValueError("Missing required credentials")
         self._access_token = credentials["access_token"]
-        self.project_id = credentials["project_id"]
+        self.project_id = credentials["project_id"] if project_id is None else project_id
         self.region_id = credentials["region_id"]
         self.client_session = client_session
         self.storage_client = None
@@ -96,6 +98,36 @@ class Client(tornado.web.RequestHandler):
             return bucket_list
         except Exception as e:
             self.log.exception("Error fetching datasets list.")
+            return {"error": str(e)}
+
+        
+    @ensure_client_setup
+    async def list_gcp_projects(self):
+        try:
+            credentials = oauth2.Credentials(self._access_token)
+            proj_client = resourcemanager_v3.ProjectsClient(credentials=credentials)
+
+            projects = []
+            query = "state:ACTIVE" #TODO need to check
+            search_request = resourcemanager_v3.SearchProjectsRequest(query=query)
+            projects_iterator = proj_client.search_projects(request=search_request)
+            for project in projects_iterator:
+                if project.project_id.startswith("sys-"):
+                    continue
+
+                projects.append(
+                    {
+                        "project_id": project.project_id,
+                        "name": project.display_name,
+                    }
+                )
+            return projects
+
+        except RefreshError as e:
+            self.log.exception(f"AUTHENTICATION_ERROR: {str(e)}")
+            raise RuntimeError({"AUTHENTICATION_ERROR": str(e), "status": 401})
+        except Exception as e:
+            self.log.exception(f"Error fetching projects: {str(e)}")
             return {"error": str(e)}
 
     # gcs -- list files implementation

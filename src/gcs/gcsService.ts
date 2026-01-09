@@ -24,11 +24,15 @@ import {
   LIST_BUCKETS_ENDPOINT,
   LIST_FILES_ENDPOINT,
   LOAD_FILE_ENDPOINT,
+  PROJECT_LIST_ENDPOINT,
   RENAME_ENDPOINT,
-  SAVE_ENDPOINT
+  SAVE_ENDPOINT,
+  SET_PROJECT_ENDPOINT
 } from '../utils/const';
 
 export class GcsService {
+  private static _currentProjectId: string | null = null;
+
   /**
    * Translate a Jupyter Lab file path into tokens.  IE.
    *   gs:bucket-name/directory/file.ipynb
@@ -43,6 +47,7 @@ export class GcsService {
    * @returns Object containing the GCS bucket and object ID
    */
   static pathParser(localPath: string) {
+    console.log('local path', localPath);
     const matches = /^(?<bucket>[\w\-\_\.]+)\/?(?<path>.*)/.exec(
       localPath
     )?.groups;
@@ -50,6 +55,7 @@ export class GcsService {
       throw new Error('Invalid Path');
     }
     const path = matches['path'];
+    console.log(' path', path);
     return {
       path: path,
       bucket: matches['bucket'],
@@ -58,12 +64,45 @@ export class GcsService {
   }
 
   /**
+   * Sets project ID
+   */
+  static async setProject(projectID: string) {
+    try {
+      const data = (await requestAPI(
+        `${SET_PROJECT_ENDPOINT}?project_id=${encodeURIComponent(projectID)}`
+      )) as any;
+      this._currentProjectId = projectID;
+      return data;
+    } catch (error: any) {
+      console.error(error?.message ?? 'Error fetching Projects List');
+    }
+  }
+
+  // 3. Add this getter so GCSDrive can check if it's safe to list buckets
+  static getCurrentProject(): string | null {
+    return this._currentProjectId;
+  }
+
+  /**
+   * List projects available to the user
+   */
+  static async getProjectsList() {
+    try {
+      const data = (await requestAPI(PROJECT_LIST_ENDPOINT)) as any;
+      return data;
+    } catch (error: any) {
+      console.error(error?.message ?? 'Error fetching Projects List');
+    }
+  }
+
+  /**
    * Thin wrapper around storage.bucket.list
    * @see https://cloud.google.com/storage/docs/listing-buckets#rest-list-buckets
    */
   static async listBuckets() {
     try {
-      const data = (await requestAPI(LIST_BUCKETS_ENDPOINT)) as any;
+      const listBucketUrl = LIST_BUCKETS_ENDPOINT;
+      const data = (await requestAPI(listBucketUrl)) as any;
       return data;
     } catch (error: any) {
       console.error(error?.message ?? 'Error fetching Buckets');

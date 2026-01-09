@@ -58,6 +58,7 @@ import {
   OVERWRITE_BUTTON_TEXT,
   UPLOAD_ERROR_TITLE
 } from '../utils/message';
+import { ProjectSearchWrapper } from './ProjectWrapper';
 
 export class GcsBrowserWidget extends Widget {
   private readonly _themeManager: IThemeManager;
@@ -67,13 +68,17 @@ export class GcsBrowserWidget extends Widget {
   private refreshButton!: ToolbarButton;
   private toggleFileFilter!: ToolbarButton;
   private readonly _progressBarWidget!: ProgressBarWidget;
+  private _projectSelectContainer!: HTMLDivElement;
+  private _projectSearchWrapper: ProjectSearchWrapper | null = null;
+  private _projects: Array<{ projectId: string; displayName: string }> = [];
+  private _currentProjectId: string = '';
 
   private readonly _browser: FileBrowser;
 
   private readonly _titleWidget!: TitleWidget;
   constructor(
     drive: GCSDrive,
-    browser: FileBrowser,
+    public browser: FileBrowser,
     themeManager: IThemeManager
   ) {
     super();
@@ -101,6 +106,18 @@ export class GcsBrowserWidget extends Widget {
 
     this._progressBarWidget = new ProgressBarWidget();
     (this.layout as PanelLayout).addWidget(this._progressBarWidget);
+
+    this._projectSelectContainer = document.createElement('div');
+    this._projectSelectContainer.className = 'gcs-project-select-container';
+    (this.layout as PanelLayout).addWidget(
+      new Widget({ node: this._projectSelectContainer })
+    );
+
+    // IMPORTANT: We keep grow 1, but we must ensure other widgets don't shrink
+    this._browser.node.style.flexGrow = '1';
+    this._browser.node.style.flexShrink = '1';
+    this._browser.node.style.overflowY = 'auto';
+    (this.layout as PanelLayout).addWidget(this._browser);
 
     // Listen for changes in the FileBrowser's path
     this._browser.model.pathChanged.connect(this.onPathChanged, this);
@@ -334,7 +351,7 @@ export class GcsBrowserWidget extends Widget {
         };
 
         reader.readAsDataURL(file); // Read as Data URL for binary files
-        
+
         this.hideProgressBar();
       });
     }
@@ -349,9 +366,60 @@ export class GcsBrowserWidget extends Widget {
     }
   };
 
+  private renderProjectSearch() {
+    // If it exists, dispose to refresh props
+    if (this._projectSearchWrapper) {
+      this._projectSearchWrapper.dispose();
+    }
+
+    this._projectSearchWrapper = new ProjectSearchWrapper({
+      projects: this._projects,
+      currentProject: this._currentProjectId,
+      onSelect: (p: any) => {
+        void this.selectProject(p.projectId, p.displayName || p.projectId);
+      }
+    });
+
+    // Mount the React widget into our Lumino container
+    Widget.attach(this._projectSearchWrapper, this._projectSelectContainer);
+  }
+
   private async initialize(): Promise<void> {
     try {
       const credentials = await authApi();
+      if (
+        credentials &&
+        !credentials.login_error &&
+        !credentials.config_error
+      ) {
+        const projects = await GcsService.getProjectsList();
+
+        // Map backend keys (project_id) to React keys (projectId)
+        this._projects = projects.map((p: any) => ({
+          projectId: p.project_id,
+          displayName: p.name
+        }));
+
+        if (this._projects.length > 0) {
+          // this._currentProjectId = credentials.project_id || '';
+          this.renderProjectSearch();
+
+          if (credentials.project_id) {
+            const match = this._projects.find(
+              p => p.projectId === credentials.project_id
+            );
+            await this.selectProject(
+              credentials.project_id,
+              match?.displayName
+            );
+          }
+        } else {
+          // If no project is selected yet, ensure browser is at root and clear
+          // This prevents the browser from trying to load buckets for a "null" project
+          await this._browser.model.cd('/');
+        }
+      }
+
       if (credentials?.login_error || credentials?.config_error) {
         this._browser.hide();
 
@@ -482,7 +550,18 @@ export class GcsBrowserWidget extends Widget {
     }
   };
 
-  public get browser(): FileBrowser {
-    return this._browser;
+  // Called when a project is selected: call listBuckets and navigate browser
+  private async selectProject(projectId: string, projectLabel?: string) {
+    this._currentProjectId = projectId;
+    this.renderProjectSearch(); // Update UI selection
+
+    try {
+      this.showProgressBar();
+      await GcsService.setProject(projectId);
+      await this._browser.model.cd('/');
+      await this._browser.model.refresh();
+    } finally {
+      this.hideProgressBar();
+    }
   }
 }
