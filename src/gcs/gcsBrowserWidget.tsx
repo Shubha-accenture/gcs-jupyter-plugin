@@ -574,8 +574,8 @@ export class GcsBrowserWidget extends Widget {
     try {
       this.showProgressBar();
 
-      await GcsService.setProject('');
-      await this._browser.model.refresh();
+      // await GcsService.setProject('');
+      // await this._browser.model.refresh();
 
       await GcsService.setProject(projectId);
 
