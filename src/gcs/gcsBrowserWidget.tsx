@@ -73,6 +73,7 @@ export class GcsBrowserWidget extends Widget {
   private _projects: Array<{ projectId: string; displayName: string }> = [];
   private _currentProjectId: string = '';
   private _defaultProjectId: string = '';
+  private _isProjectsLoading: boolean = false;
 
   private readonly _browser: FileBrowser;
 
@@ -382,8 +383,11 @@ export class GcsBrowserWidget extends Widget {
     this._projectSearchWrapper = new ProjectSearchWrapper({
       projects: this._projects,
       currentProject: this._currentProjectId,
+      disabled: this._isProjectsLoading,
       onSelect: (p: any) => {
-        void this.selectProject(p.projectId, p.displayName || p.projectId);
+        if (!this._isProjectsLoading) {
+          void this.selectProject(p.projectId, p.displayName || p.projectId);
+        }
       }
     });
 
@@ -399,10 +403,13 @@ export class GcsBrowserWidget extends Widget {
         !credentials.login_error &&
         !credentials.config_error
       ) {
+        this._isProjectsLoading = true;
+        this.renderProjectSearch();
+
         // Store the default for fallback purposes
         this._defaultProjectId = credentials.project_id || '';
 
-        this.showProgressBar();
+        // this.showProgressBar();
         const projects = await GcsService.getProjectsList();
 
         // Map backend keys (project_id) to React keys (projectId)
@@ -411,7 +418,8 @@ export class GcsBrowserWidget extends Widget {
           displayName: p.name
         }));
 
-        this.hideProgressBar();
+        // this.hideProgressBar();
+        this._isProjectsLoading = false;
         if (this._projects.length > 0) {
           // this._currentProjectId = credentials.project_id || '';
           this.renderProjectSearch();
@@ -472,6 +480,7 @@ export class GcsBrowserWidget extends Widget {
         }
       }
     } catch (error) {
+      this._isProjectsLoading = false;
       this.hideProgressBar();
       console.error('Error during initialization:', error);
     }
